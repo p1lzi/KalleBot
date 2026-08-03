@@ -1,0 +1,9 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file:
+      - .env
+    volumes:
+      # Damit die Datenbank Neustarts/Neubauten des Containers übersteht.
+      - ./data.db:/app/data.db

@@ -1,0 +1,271 @@
+# Minecraft Struktur/Biom/Farm-Finder Bot
+
+Ein Discord-Bot, mit dem eure Community gefundene Strukturen, Biome und
+gebaute Farmen (mit Koordinaten und Bildern) einträgt, damit andere sie
+leicht wiederfinden.
+
+## Funktionen
+
+- **Eintragen-Channel**: Button "📍 Eintragen" → Dropdown "Struktur,
+  Biom oder Farm?" → zweites Dropdown mit der passenden Liste (bei
+  Struktur z.B. Village, Stronghold, Nether Fortress, ...; bei Biom
+  z.B. Desert, Jungle, Savanna, ...; bei Farm z.B. Iron Farm, Gold
+  Farm, Raid Farm, ...) → Formular (Name, Koordinaten, Beschreibung,
+  bei Farmen zusätzlich ein **Specs-Feld** für Rate/AFK-Spot/Notizen).
+  Alles läuft ephemeral ab, d.h. nur die Person, die einträgt, sieht
+  die Zwischenschritte. Anschließend kann man optional Bild(er) in den
+  Channel hochladen – der Bot liest sie aus, speichert sie **gruppiert**
+  (statt einzeln) in einem versteckten Archiv-Channel und **löscht die
+  Bild-Nachrichten danach automatisch wieder**, damit der Channel
+  aufgeräumt bleibt. Über den Button "📝 Bilder beschreiben" können die
+  hochgeladenen Bilder direkt im Anschluss mit einer kurzen Beschreibung
+  versehen werden.
+- **Tags & YouTube-Link (nur bei Farmen) & Farbe (bei allem)**: Nach
+  dem Eintragen einer **Farm** erscheint eine optionale Ansicht zum
+  Vergeben von Tags – per Dropdown aus Vorschlägen (**Overworld,
+  Nether, End**) und/oder frei über "➕ Eigenen Tag hinzufügen" (z.B.
+  "Redstone", "Survival", "1.21"). Danach kann optional ein
+  **YouTube-Tutorial-Link** hinterlegt werden. Bei **Strukturen und
+  Biomen** entfällt dieser Schritt (Tags/YouTube-Link ergeben dort
+  keinen Sinn) – dort wird direkt nur die Farbauswahl angeboten.
+  Am Ende (bei jeder Kategorie) kann noch eine **individuelle
+  Embed-Farbe** für genau diesen Eintrag festgelegt werden (Vorschläge
+  wie Rot/Grün/Blau/... oder ein eigener Hex-Code über
+  "🎨 Eigene Farbe (Hex)") – überschreibt die sonst nach Kategorie
+  vergebene Standardfarbe (blau/grün/gold). Alle Schritte sind
+  komplett freiwillig – werden sie übersprungen, hat der Eintrag
+  einfach keine Tags/kein Video/die Standardfarbe.
+- **Duplikat-Warnung im Umkreis**: Beim Eintragen einer **Struktur**
+  oder eines **Bioms** (nicht bei Farmen) prüft der Bot, ob im Umkreis
+  von 100 Blöcken (X/Z) bereits ein Eintrag desselben Typs existiert.
+  Falls ja, wird vor dem Speichern nachgefragt und der nahegelegene
+  Eintrag (Name, Koordinaten, Entfernung, Beschreibung **und dessen
+  Bilder**) angezeigt – über "✅ Trotzdem eintragen" bzw.
+  "❌ Abbrechen" entscheidet man dann selbst, ob wirklich ein zweiter
+  Eintrag angelegt werden soll.
+- **Suchen-Channel**: Button "🔍 Suchen" → Dropdown "Struktur, Biom
+  oder Farm?" → zweites Dropdown mit der passenden Liste (oder "Alle
+  Strukturen"/"Alle Biome"/"Alle Farmen") → Formular (Name optional,
+  eigene aktuelle Position optional). Man erhält den passenden Treffer
+  als übersichtliches Embed mit Feldern für Kategorie, Koordinaten,
+  Entfernung, Tags und Beschreibung, plus einem Link-Button
+  "▶️ Tutorial ansehen", falls ein YouTube-Link hinterlegt ist.
+  **Bilder und Farm-Specs sind standardmäßig eingeklappt** und lassen
+  sich per Button ("🖼️ Bilder anzeigen" / "🔧 Specs anzeigen") gezielt
+  einblenden. Über "📏 Entfernung berechnen" lässt sich die Distanz auch
+  nachträglich (ohne die Suche neu zu starten) berechnen – alle
+  Treffer werden dabei automatisch nach Entfernung sortiert. Komplett
+  ephemeral, sichtbar nur für die suchende Person.
+- **Log-Channel**: Optionaler Channel, in dem neue Einträge, hinzugefügte
+  Bilder und Löschungen automatisch protokolliert werden (mit Name,
+  Kategorie, ID und wer die Aktion ausgeführt hat).
+- **Farm-Forum**: Optionaler Forum-Channel – wird beim Eintragen einer
+  neuen **Farm** automatisch ein eigener Forum-Beitrag erstellt, sobald
+  auch eventuell hochgeladene Bilder gespeichert sind. Der Beitrag
+  besteht aus mehreren Embeds: ein Haupt-Embed mit Kategorie,
+  Koordinaten und ID, ein separates **"📋 Details"-Embed** für
+  Beschreibung, Specs, Tags und YouTube-Link (nur falls jeweils
+  vorhanden), sowie **ein eigenes Embed pro Bild** inklusive der
+  jeweiligen Bildbeschreibung als Footer. Zusätzlich werden vergebene
+  Tags als **echte Discord-Forum-Tags** am Beitrag angewendet (nicht
+  nur als Text) – fehlen sie noch am Forum-Channel, legt der Bot sie
+  automatisch an (bis zu 20 Tags pro Channel, 5 pro Beitrag sind
+  Discord-Limits). Dadurch lässt sich im Forum-Channel selbst über
+  Discords eingebauten Tag-Filter danach suchen/filtern. Wird eine
+  Bildbeschreibung, ein Tag, ein YouTube-Link oder die Farbe
+  nachträglich gesetzt, aktualisiert sich der Forum-Beitrag (inkl.
+  Tags) automatisch mit. Löschst du den Eintrag (egal ob per ID oder
+  über den interaktiven Löschen-Flow), wird der zugehörige
+  Forum-Beitrag ebenfalls automatisch gelöscht. In den Suchergebnissen
+  erscheint zusätzlich ein Link-Button "💬 Zum Forum-Beitrag".
+  Strukturen und Biome erzeugen keinen Forum-Beitrag.
+- Die Dropdowns beim **Suchen** und **Löschen** zeigen nur Kategorien
+  an, für die es tatsächlich schon Einträge gibt – kein Scrollen durch
+  leere Strukturen/Biome/Farmen mehr. Beim **Eintragen** bleibt die
+  volle Liste sichtbar, damit auch der erste Eintrag einer Kategorie
+  angelegt werden kann.
+- Alle Einträge werden in farblich unterschiedlichen, mit Emoji und
+  Feldern übersichtlich aufbereiteten Embeds angezeigt (blau für
+  Strukturen, grün für Biome, gold für Farmen).
+- Alle Daten werden dauerhaft in einer lokalen SQLite-Datenbank
+  (`data.db`) gespeichert.
+- Buttons funktionieren auch nach einem Neustart des Bots weiter.
+
+## 1. Bot im Discord Developer Portal anlegen
+
+1. Gehe zu https://discord.com/developers/applications und klicke auf
+   **New Application**.
+2. Unter **Bot** → **Reset Token**, den Token kopieren (wird gleich
+   gebraucht).
+3. Unter **Bot** → **Privileged Gateway Intents** die Option
+   **Message Content Intent** aktivieren (wird für das Erkennen von
+   hochgeladenen Bildern benötigt).
+4. Unter **OAuth2 → URL Generator**:
+   - Scopes: `bot`, `applications.commands`
+   - Bot Permissions: mindestens `Send Messages`, `Embed Links`,
+     `Attach Files`, `Read Message History`, `Add Reactions`,
+     `Manage Messages` (zum Aufräumen der Bild-Nachrichten),
+     `Manage Channels` (zum automatischen Anlegen des versteckten
+     Bild-Archiv-Channels), `Create Public Threads`,
+     `Send Messages in Threads` und `Manage Threads` (für die
+     automatischen Farm-Forum-Beiträge inkl. Aktualisieren/Löschen,
+     nur nötig wenn `/setup_farm_forum` genutzt wird)
+   - Die generierte URL öffnen und den Bot auf euren Server einladen.
+
+## 2. Projekt einrichten (venv)
+
+```bash
+# Ins Projektverzeichnis wechseln
+cd minecraft-finder-bot
+
+# Virtuelle Umgebung erstellen
+python3 -m venv venv
+
+# Aktivieren
+# Linux/Mac:
+source venv/bin/activate
+# Windows (PowerShell):
+venv\Scripts\Activate.ps1
+
+# Abhängigkeiten installieren
+pip install -r requirements.txt
+```
+
+### Alternative: Docker
+
+Statt venv kann der Bot auch als Docker-Container laufen (`Dockerfile`
+und `docker-compose.yml` liegen bereits im Projekt):
+
+```bash
+# .env vorher wie in Schritt 3 beschrieben anlegen, dann:
+docker compose up -d --build
+```
+
+Das startet den Bot im Hintergrund und mountet `data.db` als Datei ins
+Projektverzeichnis, damit die Datenbank auch Neustarts/Neubauten des
+Containers übersteht. Logs ansehen: `docker compose logs -f`.
+Ohne docker-compose geht es auch direkt:
+
+```bash
+docker build -t minecraft-finder-bot .
+docker run -d --name minecraft-finder-bot \
+  --env-file .env \
+  -v "$(pwd)/data.db:/app/data.db" \
+  minecraft-finder-bot
+```
+
+## 3. Token hinterlegen
+
+Kopiere `.env.example` zu `.env` und trage deinen Bot-Token ein:
+
+```bash
+cp .env.example .env
+```
+
+```
+DISCORD_TOKEN=dein_echter_token
+```
+
+## 4. Bot starten
+
+```bash
+python bot.py
+```
+
+(Bei Docker: entfällt, der Container startet den Bot bereits automatisch.)
+
+## 5. Channel einrichten
+
+Auf eurem Server, jeweils im gewünschten Channel ausführen:
+
+- Im Eintragen-Channel: `/setup_eintragen`
+- Im Suchen-Channel: `/setup_suchen`
+- Im Log-Channel (optional): `/setup_log`
+- Für Farmen (optional): `/setup_farm_forum channel:#dein-forum-channel`
+
+`/setup_eintragen`, `/setup_suchen` und `/setup_log` werden im
+jeweiligen Ziel-Channel ausgeführt und merken sich diesen. Bei
+`/setup_farm_forum` wählst du den Forum-Channel stattdessen direkt als
+Parameter aus (Discord zeigt beim Tippen von `#` automatisch nur
+Forum-Channel zur Auswahl an) – der Command kann daher von überall aus
+ausgeführt werden. Alle vier Commands erfordern Administrator-Rechte.
+`/setup_eintragen` und `/setup_suchen` posten zusätzlich den
+jeweiligen Button dauerhaft in den Channel.
+
+## Weitere Commands
+
+- `/eintrag_loeschen` (Admin) – drei Wege, einen Eintrag zu löschen:
+  - `/eintrag_loeschen eintrag_id:<ID>` – löscht sofort per bekannter ID
+    (steht in der Bestätigung nach dem Eintragen und in den
+    Suchergebnissen).
+  - `/eintrag_loeschen` ohne ID – öffnet den gleichen zweistufigen
+    Struktur/Biom-Dropdown wie beim Suchen (inkl. Such-Filter),
+    anschließend ein Suchfeld für den Namen (leer = alle in der
+    Kategorie).
+  - In der danach angezeigten Ergebnisliste kannst du dich mit
+    "◀ Zurück" / "Weiter ▶" durch die Treffer klicken und mit
+    "🗑️ Diesen Eintrag löschen" den gerade angezeigten Eintrag
+    entfernen.
+- `!sync` – synchronisiert die Slash-Commands manuell neu (nur der
+  **Bot-Owner** darf das, also der Account, der den Bot im Developer
+  Portal erstellt hat). Wird normalerweise nicht gebraucht, da beim
+  Start automatisch synchronisiert wird – hilfreich aber, wenn du
+  Commands im Code änderst und den Bot nicht neu starten willst:
+  - `!sync` – globale Synchronisierung (kann bis zu 1 Stunde dauern,
+    bis Discord die Änderung überall anzeigt)
+  - `!sync <server_id>` – sofortige Synchronisierung nur auf diesem
+    Server (praktisch zum Testen neuer Commands)
+
+## Hinweise
+
+- Koordinaten können als `X Y Z` oder `X Z` eingegeben werden.
+- Die Dropdown-Listen (`STRUCTURES` für Strukturen, `BIOMES` für Biome,
+  `FARMS` für Farmen) können in `views.py` beliebig angepasst/erweitert
+  werden – jeder Eintrag ist ein `(Name, Emoji)`-Tupel. Discord erlaubt
+  maximal 25 Optionen pro Dropdown – hat eine Liste mehr Einträge,
+  blättert man mit "◀ Zurück" / "Weiter ▶"-Buttons automatisch durch
+  die weiteren Seiten. Über den Button "🔍 Suche" kann die Liste
+  zusätzlich per Suchbegriff gefiltert werden, damit man nicht lange
+  scrollen muss; "✖ Filter zurücksetzen" zeigt wieder die volle Liste.
+- Die Entfernungsberechnung bei der Suche nutzt nur X/Z (horizontale
+  Entfernung), da das für die Minecraft-Navigation meist relevanter
+  ist als die Höhe.
+- Die vorgeschlagenen Tags (`PRESET_TAGS` in `views.py`, standardmäßig
+  `Overworld`, `Nether`, `End`) lassen sich dort anpassen/erweitern.
+  Eigene, freie Tags kann man unabhängig davon jederzeit über
+  "➕ Eigenen Tag hinzufügen" ergänzen.
+- Die vorgeschlagenen Embed-Farben (`PRESET_COLORS` in `views.py`)
+  lassen sich dort ebenfalls anpassen/erweitern; ein beliebiger
+  Hex-Code funktioniert unabhängig davon jederzeit über
+  "🎨 Eigene Farbe (Hex)".
+- Bilder werden nicht selbst in der Datenbank gespeichert, sondern in
+  einen automatisch angelegten, versteckten Channel namens
+  `bild-archiv` kopiert (nur für den Bot sichtbar) – nur dessen
+  dauerhafter Discord-CDN-Link wird in der Datenbank hinterlegt.
+  Mehrere gleichzeitig hochgeladene Bilder werden dabei **gruppiert**
+  in möglichst wenigen Nachrichten gespeichert (Discord erlaubt bis zu
+  10 Anhänge pro Nachricht), statt einzeln verschickt zu werden.
+  Dadurch bleiben die Bilder auch dann sichtbar, wenn deine
+  ursprüngliche Upload-Nachricht (wie unten beschrieben) gelöscht wird.
+  Lösche den `bild-archiv`-Channel nicht manuell, sonst gehen die
+  gespeicherten Bilder verloren.
+- Bei der Suche/beim Löschen gibt es kein künstliches Limit für die
+  Anzahl angezeigter Bilder mehr – gezeigt werden alle vorhandenen
+  Bilder eines Eintrags, begrenzt nur durch Discords technisches
+  Maximum von 10 Embeds pro Nachricht (1 davon ist für die Infobox
+  reserviert, macht maximal 9 Bilder gleichzeitig).
+- Bilder und Farm-Specs werden aus Übersichtsgründen standardmäßig
+  eingeklappt angezeigt; ein Klick auf "🖼️ Bilder anzeigen" bzw.
+  "🔧 Specs anzeigen" blendet sie ein.
+- Deine Nachrichten mit den hochgeladenen Bildern im Eintragen-Channel
+  werden erst gelöscht, **nachdem** du auf den Button **"✅ Fertig"**
+  geklickt hast (oder nach Ablauf der 3 Minuten) – nicht sofort nach
+  jedem einzelnen Bild. Der Eintrag selbst wurde zu diesem Zeitpunkt
+  bereits gespeichert (das passiert direkt beim Absenden des
+  Eintragen-Formulars) – der "Fertig"-Button schließt nur den
+  Bild-Upload ab und legt keinen zweiten/neuen Eintrag an.
+- Das Specs-Feld beim Eintragen erscheint nur bei der Kategorie
+  "Farm" und ist optional (z.B. für Durchsatz, AFK-Position,
+  Redstone-Hinweise). Es lässt sich später nicht nachträglich über den
+  Bot bearbeiten – dafür den Eintrag löschen und neu anlegen.
+- `data.db` liegt im Projektordner und sollte regelmäßig gesichert werden.
