@@ -78,7 +78,24 @@ leicht wiederfinden.
   über den interaktiven Löschen-Flow), wird der zugehörige
   Forum-Beitrag ebenfalls automatisch gelöscht. In den Suchergebnissen
   erscheint zusätzlich ein Link-Button "💬 Zum Forum-Beitrag".
-  Strukturen und Biome erzeugen keinen Forum-Beitrag.
+  Strukturen und Biome erzeugen keinen Forum-Beitrag. Der Forum-Beitrag
+  selbst hat außerdem zwei Buttons **"✏️ Bearbeiten"** und
+  **"🗑️ Löschen"** direkt unter dem Beitrag. "✏️ Bearbeiten" öffnet ein
+  Menü mit vier Optionen:
+  - 📝 **Details** – Name, Koordinaten, Beschreibung, Specs
+  - 🎨 **Farbe ändern**
+  - 🔗 **YouTube-Link ändern/entfernen**
+  - 🖼️ **Bilder verwalten** – durchblättern, Beschreibungen ändern,
+    einzelne Bilder löschen oder neue hinzufügen
+
+  "🗑️ Löschen" entfernt den Eintrag (inkl. Forum-Beitrag) komplett,
+  ohne extra in den Eintragen/Löschen-Channel wechseln zu müssen. Beide
+  Buttons funktionieren auch nach einem Bot-Neustart weiter und dürfen
+  nur von der Person, die den Eintrag ursprünglich angelegt hat, oder
+  von Admins (Administrator- bzw. Manage-Messages-Rechte im
+  Forum-Channel) benutzt werden. Dasselbe Bearbeiten-Menü ist auch über
+  "✏️ Bearbeiten" in den Suchergebnissen (für Ersteller/Admins) und im
+  `/eintrag_loeschen`-Durchklick-Flow (Admins) erreichbar.
 - Die Dropdowns beim **Suchen** und **Löschen** zeigen nur Kategorien
   an, für die es tatsächlich schon Einträge gibt – kein Scrollen durch
   leere Strukturen/Biome/Farmen mehr. Beim **Eintragen** bleibt die
@@ -194,7 +211,8 @@ jeweiligen Button dauerhaft in den Channel.
 
 ## Weitere Commands
 
-- `/eintrag_loeschen` (Admin) – drei Wege, einen Eintrag zu löschen:
+- `/eintrag_loeschen` (Admin) – drei Wege, einen Eintrag zu löschen,
+  und zusätzlich die Möglichkeit, ihn zu bearbeiten:
   - `/eintrag_loeschen eintrag_id:<ID>` – löscht sofort per bekannter ID
     (steht in der Bestätigung nach dem Eintragen und in den
     Suchergebnissen).
@@ -205,7 +223,17 @@ jeweiligen Button dauerhaft in den Channel.
   - In der danach angezeigten Ergebnisliste kannst du dich mit
     "◀ Zurück" / "Weiter ▶" durch die Treffer klicken und mit
     "🗑️ Diesen Eintrag löschen" den gerade angezeigten Eintrag
-    entfernen.
+    entfernen, oder mit **"✏️ Bearbeiten"** stattdessen:
+    - 🎨 die **Embed-Farbe** ändern (dieselbe Auswahl wie beim
+      Eintragen)
+    - 🔗 den **YouTube-Link** ändern oder entfernen
+    - 🖼️ die **Bilder verwalten**: durchblättern, Beschreibungen
+      ändern ("✏️ Beschreibung ändern"), einzelne Bilder löschen
+      ("🗑️ Bild löschen") oder neue hinzufügen
+      ("➕ Bild hinzufügen", derselbe Upload-Ablauf wie beim Eintragen
+      inkl. "✅ Fertig"-Button)
+    - Ein bestehender Farm-Forum-Beitrag wird bei all diesen Änderungen
+      automatisch mit aktualisiert.
 - `!sync` – synchronisiert die Slash-Commands manuell neu (nur der
   **Bot-Owner** darf das, also der Account, der den Bot im Developer
   Portal erstellt hat). Wird normalerweise nicht gebraucht, da beim

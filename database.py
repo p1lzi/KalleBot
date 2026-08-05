@@ -221,6 +221,54 @@ async def get_images_full(entry_id: int) -> List[Dict[str, Any]]:
             return [dict(r) for r in rows]
 
 
+async def update_entry(
+    entry_id: int,
+    name: Optional[str] = None,
+    x: Optional[float] = None,
+    y: Optional[float] = None,
+    z: Optional[float] = None,
+    beschreibung: Optional[str] = None,
+    specs: Optional[str] = None,
+    _unset_y: bool = False,
+) -> None:
+    """
+    Aktualisiert die Kern-Felder eines Eintrags. Nur übergebene (nicht-None)
+    Felder werden geändert - Felder, die weggelassen werden, bleiben
+    unverändert. Um Y explizit auf NULL zu setzen (2D-Koordinate ohne Höhe),
+    _unset_y=True übergeben.
+    """
+    updates: Dict[str, Any] = {}
+    if name is not None:
+        updates["name"] = name
+    if x is not None:
+        updates["x"] = x
+    if y is not None or _unset_y:
+        updates["y"] = y
+    if z is not None:
+        updates["z"] = z
+    if beschreibung is not None:
+        updates["beschreibung"] = beschreibung
+    if specs is not None:
+        updates["specs"] = specs
+
+    if not updates:
+        return
+
+    set_clause = ", ".join(f"{col} = ?" for col in updates)
+    params = list(updates.values()) + [entry_id]
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(f"UPDATE entries SET {set_clause} WHERE id = ?", params)
+        await conn.commit()
+
+
+async def delete_image(image_id: int) -> None:
+    """Entfernt ein einzelnes Bild (nur den Datenbank-Eintrag/Link, nicht die
+    Datei im Archiv-Channel)."""
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("DELETE FROM images WHERE id = ?", (image_id,))
+        await conn.commit()
+
+
 async def delete_entry(entry_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute("DELETE FROM images WHERE entry_id = ?", (entry_id,))

@@ -14,7 +14,15 @@ from dotenv import load_dotenv
 
 import database as db
 from logs import log_action
-from views import DeleteTypeView, EntryView, SearchView, _category_emoji, _delete_farm_forum_post
+from views import (
+    DeleteTypeView,
+    EntryView,
+    ForumDeleteButton,
+    ForumEditButton,
+    SearchView,
+    _category_emoji,
+    _delete_farm_forum_post,
+)
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -29,10 +37,11 @@ class FinderBot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await db.init_db()
-        # Persistente Views registrieren, damit die Buttons auch nach einem Neustart
-        # des Bots weiter funktionieren.
+        # Persistente Views/Buttons registrieren, damit sie auch nach einem
+        # Neustart des Bots weiter funktionieren.
         self.add_view(EntryView())
         self.add_view(SearchView())
+        self.add_dynamic_items(ForumEditButton, ForumDeleteButton)
         await self.tree.sync()
 
 

@@ -28,6 +28,7 @@ Ablauf Löschen:    Wie Suchen (ohne Entfernungs-Button), aber mit einem zusätz
 
 import asyncio
 import math
+import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import discord
@@ -305,7 +306,8 @@ async def _create_farm_forum_post(
     per /setup_farm_forum ein Forum-Channel verknüpft wurde. Ohne Verknüpfung
     passiert nichts - kein Fehler, einfach nur kein Beitrag. Vorhandene Tags
     werden dabei als echte Discord-Forum-Tags angewendet, damit man später im
-    Forum danach filtern/suchen kann.
+    Forum danach filtern/suchen kann. Der Beitrag bekommt außerdem
+    "✏️ Bearbeiten"/"🗑️ Löschen"-Buttons.
     """
     if guild is None:
         return
@@ -320,8 +322,14 @@ async def _create_farm_forum_post(
 
     applied_tags = await _resolve_forum_tags(channel, (tags or "").split(","))
 
+    view = discord.ui.View(timeout=None)
+    view.add_item(ForumEditButton(entry_id))
+    view.add_item(ForumDeleteButton(entry_id))
+
     try:
-        result = await channel.create_thread(name=name[:100], embeds=embeds, applied_tags=applied_tags)
+        result = await channel.create_thread(
+            name=name[:100], embeds=embeds, applied_tags=applied_tags, view=view
+        )
         await db.set_forum_thread(entry_id, result.thread.id)
     except discord.HTTPException:
         pass
@@ -370,6 +378,8 @@ async def _sync_farm_forum_post(guild: Optional[discord.Guild], entry_id: int) -
     try:
         starter_message = await thread.fetch_message(thread.id)
         await starter_message.edit(embeds=embeds)
+        if thread.name != entry["name"][:100]:
+            await thread.edit(name=entry["name"][:100])
     except discord.HTTPException:
         pass
 
@@ -391,6 +401,200 @@ def _format_coords(entry: Dict[str, Any]) -> str:
     if entry.get("y") is not None:
         return f"X: {entry['x']} | Y: {entry['y']} | Z: {entry['z']}"
     return f"X: {entry['x']} | Z: {entry['z']}"
+
+
+def _format_coords_input(entry: Dict[str, Any]) -> str:
+    """Wie _format_coords, aber als reine Zahlen zum Vorausfüllen des Formulars."""
+    if entry.get("y") is not None:
+        return f"{entry['x']} {entry['y']} {entry['z']}"
+    return f"{entry['x']} {entry['z']}"
+
+
+async def _can_edit_or_delete(interaction: discord.Interaction, entry: Dict[str, Any]) -> bool:
+    """Nur die ursprüngliche Person oder jemand mit Admin-/Manage-Messages-Rechten
+    darf einen Eintrag über die Forum-Buttons bearbeiten oder löschen."""
+    if entry.get("ersteller_id") == interaction.user.id:
+        return True
+    if isinstance(interaction.channel, (discord.Thread, discord.TextChannel, discord.ForumChannel)):
+        perms = interaction.channel.permissions_for(interaction.user)  # type: ignore[union-attr]
+        return bool(perms.administrator or perms.manage_messages)
+    return False
+
+
+class ForumEditModal(ui.Modal, title="Eintrag bearbeiten"):
+    name = ui.TextInput(label="Name", max_length=100)
+    koordinaten = ui.TextInput(label="Koordinaten (X Y Z oder X Z)", max_length=100)
+    beschreibung = ui.TextInput(
+        label="Beschreibung (optional)",
+        style=discord.TextStyle.paragraph,
+        required=False,
+        max_length=500,
+    )
+
+    def __init__(self, entry: Dict[str, Any]) -> None:
+        super().__init__()
+        self.entry_id = entry["id"]
+        self.category = entry["typ"]
+        self.title = f"Bearbeiten: {entry['name']}"[:45]
+        self.name.default = entry["name"]
+        self.koordinaten.default = _format_coords_input(entry)
+        self.beschreibung.default = entry.get("beschreibung") or None
+
+        self.specs_input: Optional[ui.TextInput] = None
+        if self.category in _FARM_LABELS:
+            self.specs_input = ui.TextInput(
+                label="Farm-Specs (optional)",
+                style=discord.TextStyle.paragraph,
+                required=False,
+                max_length=500,
+            )
+            self.specs_input.default = entry.get("specs") or None
+            self.add_item(self.specs_input)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        parts = self.koordinaten.value.replace(",", " ").split()
+        try:
+            if len(parts) == 3:
+                x, y, z = float(parts[0]), float(parts[1]), float(parts[2])
+            elif len(parts) == 2:
+                x, z = float(parts[0]), float(parts[1])
+                y = None
+            else:
+                raise ValueError
+        except ValueError:
+            await interaction.response.send_message(
+                "❌ Konnte die Koordinaten nicht lesen. Bitte im Format `X Y Z` oder `X Z` angeben.",
+                ephemeral=True,
+            )
+            return
+
+        specs_value = None
+        if self.specs_input and self.specs_input.value:
+            specs_value = self.specs_input.value.strip() or None
+        beschreibung_value = self.beschreibung.value.strip() if self.beschreibung.value else None
+
+        await db.update_entry(
+            self.entry_id,
+            name=self.name.value.strip(),
+            x=x,
+            y=y,
+            z=z,
+            beschreibung=beschreibung_value,
+            specs=specs_value,
+        )
+
+        await interaction.response.send_message("✅ Eintrag wurde aktualisiert.", ephemeral=True)
+
+        await log_action(
+            interaction.guild,
+            discord.Embed(
+                title="✏️ Eintrag bearbeitet",
+                description=(
+                    f"{_category_emoji(self.category)} **{self.name.value.strip()}** ({self.category}) "
+                    f"ID `{self.entry_id}`\nBearbeitet von: {interaction.user.mention}"
+                ),
+                color=discord.Color.orange(),
+                timestamp=discord.utils.utcnow(),
+            ),
+        )
+
+        await _sync_farm_forum_post(interaction.guild, self.entry_id)
+
+
+class ForumEditButton(discord.ui.DynamicItem[discord.ui.Button], template=r"forum_edit:(?P<entry_id>\d+)"):
+    """Persistenter 'Bearbeiten'-Button in Farm-Forum-Beiträgen (übersteht Bot-Neustarts)."""
+
+    def __init__(self, entry_id: int) -> None:
+        super().__init__(
+            discord.ui.Button(
+                label="✏️ Bearbeiten",
+                style=discord.ButtonStyle.primary,
+                custom_id=f"forum_edit:{entry_id}",
+            )
+        )
+        self.entry_id = entry_id
+
+    @classmethod
+    async def from_custom_id(
+        cls, interaction: discord.Interaction, item: discord.ui.Button, match: "re.Match[str]"
+    ) -> "ForumEditButton":
+        return cls(int(match["entry_id"]))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        entry = await db.get_entry(self.entry_id)
+        if not entry:
+            await interaction.response.send_message("❌ Dieser Eintrag existiert nicht mehr.", ephemeral=True)
+            return
+        if not await _can_edit_or_delete(interaction, entry):
+            await interaction.response.send_message(
+                "❌ Nur die Person, die den Eintrag erstellt hat, oder ein Admin kann ihn bearbeiten.",
+                ephemeral=True,
+            )
+            return
+        actions_view = EditActionsView(entry)
+        await interaction.response.send_message(
+            f"✏️ Was möchtest du an **{entry['name']}** (ID {entry['id']}) ändern?",
+            view=actions_view,
+            ephemeral=True,
+        )
+
+
+class ForumDeleteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"forum_delete:(?P<entry_id>\d+)"):
+    """Persistenter 'Löschen'-Button in Farm-Forum-Beiträgen (übersteht Bot-Neustarts)."""
+
+    def __init__(self, entry_id: int) -> None:
+        super().__init__(
+            discord.ui.Button(
+                label="🗑️ Löschen",
+                style=discord.ButtonStyle.danger,
+                custom_id=f"forum_delete:{entry_id}",
+            )
+        )
+        self.entry_id = entry_id
+
+    @classmethod
+    async def from_custom_id(
+        cls, interaction: discord.Interaction, item: discord.ui.Button, match: "re.Match[str]"
+    ) -> "ForumDeleteButton":
+        return cls(int(match["entry_id"]))
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        entry = await db.get_entry(self.entry_id)
+        if not entry:
+            await interaction.response.send_message("❌ Dieser Eintrag existiert nicht mehr.", ephemeral=True)
+            return
+        if not await _can_edit_or_delete(interaction, entry):
+            await interaction.response.send_message(
+                "❌ Nur die Person, die den Eintrag erstellt hat, oder ein Admin kann ihn löschen.",
+                ephemeral=True,
+            )
+            return
+
+        await db.delete_entry(self.entry_id)
+        await interaction.response.send_message(
+            f"🗑️ **{entry['name']}** wurde gelöscht. Dieser Forum-Beitrag wird nun ebenfalls entfernt.",
+            ephemeral=True,
+        )
+
+        await log_action(
+            interaction.guild,
+            discord.Embed(
+                title="🗑️ Eintrag gelöscht",
+                description=(
+                    f"{_category_emoji(entry['typ'])} **{entry['name']}** ({entry['typ']}) "
+                    f"ID `{entry['id']}`\nGelöscht über Forum-Beitrag von: {interaction.user.mention}"
+                ),
+                color=discord.Color.red(),
+                timestamp=discord.utils.utcnow(),
+            ),
+        )
+
+        thread = interaction.channel if isinstance(interaction.channel, discord.Thread) else None
+        if thread is not None:
+            try:
+                await thread.delete()
+            except discord.HTTPException:
+                pass
 
 
 def _build_farm_forum_embeds(
@@ -1605,6 +1809,37 @@ class SearchSpecsToggleButton(ui.Button):
         await interaction.response.edit_message(embeds=embeds, view=view)
 
 
+class SearchEditButton(ui.Button):
+    """Erlaubt dem/der Ersteller(in) des Eintrags oder Admins, ihn direkt aus
+    den Suchergebnissen heraus zu bearbeiten (Farbe/YouTube-Link/Bilder)."""
+
+    def __init__(self) -> None:
+        super().__init__(label="✏️ Bearbeiten", style=discord.ButtonStyle.primary, row=3)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: "SearchResultsView" = self.view  # type: ignore[assignment]
+        r = view.results[view.index]
+
+        is_owner = interaction.user.id == r.get("ersteller_id")
+        is_admin = (
+            isinstance(interaction.user, discord.Member)
+            and interaction.user.guild_permissions.administrator
+        )
+        if not (is_owner or is_admin):
+            await interaction.response.send_message(
+                "❌ Nur die Person, die diesen Eintrag erstellt hat, oder ein Admin kann ihn bearbeiten.",
+                ephemeral=True,
+            )
+            return
+
+        actions_view = EditActionsView(r)
+        await interaction.response.send_message(
+            f"✏️ Was möchtest du an **{r['name']}** (ID {r['id']}) ändern?",
+            view=actions_view,
+            ephemeral=True,
+        )
+
+
 class SearchResultsView(ui.View):
     """
     Ergebnisliste mit Zurück/Weiter. Bilder und Farm-Specs sind standardmäßig
@@ -1649,6 +1884,8 @@ class SearchResultsView(ui.View):
 
         if r.get("youtube_link"):
             self.add_item(ui.Button(label="▶️ Tutorial ansehen", url=r["youtube_link"], row=2))
+
+        self.add_item(SearchEditButton())
 
     async def build_embeds(self) -> List[discord.Embed]:
         r = self.results[self.index]
@@ -1820,6 +2057,359 @@ class DeleteSpecsToggleButton(ui.Button):
         await interaction.response.edit_message(embeds=embeds, view=view)
 
 
+# --------------------------------------------------------------------------- #
+# Bearbeiten: Farbe, YouTube-Link, Bilder (hinzufügen/löschen/beschreiben)
+# --------------------------------------------------------------------------- #
+
+async def _collect_and_archive_images(
+    interaction: discord.Interaction, entry_id: int, user_id: int
+) -> List[Dict[str, Any]]:
+    """
+    Wartet bis zu 3 Minuten auf Bild-Nachrichten im aktuellen Channel (oder bis
+    auf "✅ Fertig" geklickt wird), archiviert sie gruppiert im Bild-Archiv-Channel,
+    speichert sie in der Datenbank und löscht anschließend die ursprünglichen
+    Nachrichten. Liefert die (aktualisierte) vollständige Bilderliste des Eintrags.
+    Erwartet, dass die Interaction bereits deferred wurde (ephemeral).
+    """
+    bot = interaction.client
+    finish_view = FinishUploadView(user_id)
+    prompt_message = await interaction.followup.send(
+        "📸 Sende jetzt bis zu 3 Minuten lang Bild(er) in diesen Channel. Deine "
+        "Nachrichten werden danach automatisch gelöscht. Klicke auf **✅ Fertig**, "
+        "wenn du keine weiteren Bilder mehr hochladen möchtest.",
+        view=finish_view,
+        ephemeral=True,
+    )
+
+    collected_messages: List[discord.Message] = []
+    collected_attachments: List[discord.Attachment] = []
+
+    def check(m: discord.Message) -> bool:
+        return m.author.id == user_id and m.channel.id == interaction.channel.id
+
+    loop = asyncio.get_event_loop()
+    end_time = loop.time() + 180
+
+    while True:
+        remaining = end_time - loop.time()
+        if remaining <= 0 or finish_view.done_event.is_set():
+            break
+
+        message_task = asyncio.ensure_future(bot.wait_for("message", check=check))
+        done_task = asyncio.ensure_future(finish_view.done_event.wait())
+        done, pending = await asyncio.wait(
+            {message_task, done_task}, timeout=remaining, return_when=asyncio.FIRST_COMPLETED
+        )
+        for task in pending:
+            task.cancel()
+
+        if not done or done_task in done:
+            break
+
+        try:
+            msg = message_task.result()
+        except Exception:
+            break
+
+        image_attachments = [
+            att for att in msg.attachments
+            if att.content_type and att.content_type.startswith("image/")
+        ]
+        if image_attachments:
+            collected_messages.append(msg)
+            collected_attachments.extend(image_attachments)
+
+    finish_view.stop()
+    try:
+        await prompt_message.edit(content="⏳ Bild-Upload beendet, verarbeite Bilder ...", view=None)
+    except discord.HTTPException:
+        pass
+
+    saved_urls: List[str] = []
+    if collected_attachments and interaction.guild is not None:
+        try:
+            archive_channel = await _get_image_channel(interaction.guild)
+            files = [await att.to_file() for att in collected_attachments]
+            for i in range(0, len(files), 10):
+                chunk = files[i:i + 10]
+                archive_msg = await archive_channel.send(
+                    content=(
+                        f"Bilder zu Eintrag #{entry_id} (nachträglich hinzugefügt von {interaction.user})"
+                        if i == 0
+                        else None
+                    ),
+                    files=chunk,
+                )
+                saved_urls.extend(att.url for att in archive_msg.attachments)
+        except discord.HTTPException:
+            pass
+
+    for m in collected_messages:
+        try:
+            await m.delete()
+        except discord.HTTPException:
+            pass
+
+    if saved_urls:
+        await db.add_images(entry_id, saved_urls)
+
+    return await db.get_images_full(entry_id)
+
+
+class ImageManagePrevButton(ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="◀", style=discord.ButtonStyle.secondary, row=0)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: "ImageManageView" = self.view  # type: ignore[assignment]
+        view.index -= 1
+        view.rebuild_buttons()
+        await interaction.response.edit_message(
+            content=view.render_content(), embed=view.build_embed(), view=view
+        )
+
+
+class ImageManageNextButton(ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="▶", style=discord.ButtonStyle.secondary, row=0)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: "ImageManageView" = self.view  # type: ignore[assignment]
+        view.index += 1
+        view.rebuild_buttons()
+        await interaction.response.edit_message(
+            content=view.render_content(), embed=view.build_embed(), view=view
+        )
+
+
+class ImageManageCaptionModal(ui.Modal, title="Bildbeschreibung ändern"):
+    def __init__(self, gallery: "ImageManageView", image_id: int, current: Optional[str]) -> None:
+        super().__init__()
+        self.gallery = gallery
+        self.image_id = image_id
+        self.beschreibung = ui.TextInput(
+            label="Beschreibung (leer lassen zum Entfernen)",
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=200,
+            default=current or None,
+        )
+        self.add_item(self.beschreibung)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        caption = self.beschreibung.value.strip() if self.beschreibung.value else ""
+        await db.set_image_caption(self.image_id, caption)
+        for img in self.gallery.images:
+            if img["id"] == self.image_id:
+                img["caption"] = caption
+        await interaction.response.edit_message(
+            content=self.gallery.render_content(), embed=self.gallery.build_embed(), view=self.gallery
+        )
+        await _sync_farm_forum_post(interaction.guild, self.gallery.entry_id)
+
+
+class ImageManageCaptionButton(ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="✏️ Beschreibung ändern", style=discord.ButtonStyle.primary, row=1)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: "ImageManageView" = self.view  # type: ignore[assignment]
+        if not view.images:
+            await interaction.response.defer()
+            return
+        img = view.images[view.index]
+        await interaction.response.send_modal(
+            ImageManageCaptionModal(view, img["id"], img.get("caption"))
+        )
+
+
+class ImageManageDeleteButton(ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="🗑️ Bild löschen", style=discord.ButtonStyle.danger, row=1)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: "ImageManageView" = self.view  # type: ignore[assignment]
+        if not view.images:
+            await interaction.response.defer()
+            return
+        img = view.images.pop(view.index)
+        await db.delete_image(img["id"])
+        if view.index >= len(view.images) and view.index > 0:
+            view.index -= 1
+        view.rebuild_buttons()
+        await interaction.response.edit_message(
+            content=view.render_content(), embed=view.build_embed(), view=view
+        )
+        await _sync_farm_forum_post(interaction.guild, view.entry_id)
+
+
+class ImageManageAddButton(ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="➕ Bild hinzufügen", style=discord.ButtonStyle.success, row=2)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: "ImageManageView" = self.view  # type: ignore[assignment]
+        await interaction.response.defer(ephemeral=True)
+        new_images = await _collect_and_archive_images(interaction, view.entry_id, interaction.user.id)
+        view.images = new_images
+        view.index = max(0, len(view.images) - 1)
+        view.rebuild_buttons()
+        await interaction.followup.send(
+            content=view.render_content(), embed=view.build_embed(), view=view, ephemeral=True
+        )
+        await _sync_farm_forum_post(interaction.guild, view.entry_id)
+
+
+class ImageManageView(ui.View):
+    """Galerie zum Verwalten der Bilder eines bestehenden Eintrags (Beschreiben,
+    Löschen, Hinzufügen)."""
+
+    def __init__(self, entry_id: int, images: List[Dict[str, Any]]) -> None:
+        super().__init__(timeout=300)
+        self.entry_id = entry_id
+        self.images = images
+        self.index = max(0, len(images) - 1) if images else 0
+        self.rebuild_buttons()
+
+    def rebuild_buttons(self) -> None:
+        self.clear_items()
+        prev_btn = ImageManagePrevButton()
+        next_btn = ImageManageNextButton()
+        prev_btn.disabled = not self.images or self.index <= 0
+        next_btn.disabled = not self.images or self.index >= len(self.images) - 1
+        self.add_item(prev_btn)
+        self.add_item(next_btn)
+
+        caption_btn = ImageManageCaptionButton()
+        delete_btn = ImageManageDeleteButton()
+        caption_btn.disabled = not self.images
+        delete_btn.disabled = not self.images
+        self.add_item(caption_btn)
+        self.add_item(delete_btn)
+
+        self.add_item(ImageManageAddButton())
+
+    def render_content(self) -> str:
+        if not self.images:
+            return "Für diesen Eintrag sind aktuell keine Bilder hinterlegt."
+        return f"Bild {self.index + 1} von {len(self.images)}"
+
+    def build_embed(self) -> Optional[discord.Embed]:
+        if not self.images:
+            return None
+        img = self.images[self.index]
+        embed = discord.Embed(color=discord.Color.blurple())
+        embed.set_image(url=img["url"])
+        embed.description = img.get("caption") or "_Keine Beschreibung._"
+        return embed
+
+
+class EditYoutubeLinkModal(ui.Modal, title="YouTube-Link ändern"):
+    def __init__(self, entry_id: int, current: Optional[str]) -> None:
+        super().__init__()
+        self.entry_id = entry_id
+        self.youtube_link = ui.TextInput(
+            label="YouTube-Link (leer lassen zum Entfernen)",
+            placeholder="z.B. https://youtu.be/...",
+            required=False,
+            max_length=200,
+            default=current or None,
+        )
+        self.add_item(self.youtube_link)
+
+    async def on_submit(self, interaction: discord.Interaction) -> None:
+        link = self.youtube_link.value.strip() if self.youtube_link.value else None
+        if link and "youtu" not in link.lower():
+            await interaction.response.send_message(
+                "❌ Das sieht nicht nach einem YouTube-Link aus. Bitte einen gültigen Link "
+                "angeben oder das Feld leer lassen.",
+                ephemeral=True,
+            )
+            return
+        await db.set_entry_youtube(self.entry_id, link)
+        text = f"✅ YouTube-Link aktualisiert: {link}" if link else "✅ YouTube-Link entfernt."
+        await interaction.response.edit_message(content=text, view=None)
+        await _sync_farm_forum_post(interaction.guild, self.entry_id)
+
+
+class EditDetailsButton(ui.Button):
+    def __init__(self, entry: Dict[str, Any]) -> None:
+        super().__init__(label="📝 Details (Name/Koordinaten/...)", style=discord.ButtonStyle.secondary, row=0)
+        self.entry = entry
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(ForumEditModal(self.entry))
+
+
+class EditColorButton(ui.Button):
+    def __init__(self, entry_id: int) -> None:
+        super().__init__(label="🎨 Farbe ändern", style=discord.ButtonStyle.secondary, row=0)
+        self.entry_id = entry_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        color_view = ColorView(self.entry_id)
+        await interaction.response.edit_message(
+            content="🎨 Wähle eine neue Embed-Farbe für diesen Eintrag:", view=color_view
+        )
+
+
+class EditYoutubeButton(ui.Button):
+    def __init__(self, entry_id: int, current_link: Optional[str]) -> None:
+        super().__init__(label="🔗 YouTube-Link ändern", style=discord.ButtonStyle.secondary, row=1)
+        self.entry_id = entry_id
+        self.current_link = current_link
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(EditYoutubeLinkModal(self.entry_id, self.current_link))
+
+
+class EditImagesButton(ui.Button):
+    def __init__(self, entry_id: int) -> None:
+        super().__init__(label="🖼️ Bilder verwalten", style=discord.ButtonStyle.secondary, row=1)
+        self.entry_id = entry_id
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.defer(ephemeral=True)
+        images = await db.get_images_full(self.entry_id)
+        gallery = ImageManageView(self.entry_id, images)
+        await interaction.followup.send(
+            content=gallery.render_content(), embed=gallery.build_embed(), view=gallery, ephemeral=True
+        )
+
+
+class EditActionsView(ui.View):
+    """
+    Zentrales Bearbeiten-Menü für einen Eintrag: Name/Koordinaten/Beschreibung/
+    Specs, Farbe, YouTube-Link und Bilder (inkl. Beschreibungen). Wird sowohl vom
+    persistenten Forum-Bearbeiten-Button als auch aus Suchen/Löschen heraus genutzt.
+    """
+
+    def __init__(self, entry: Dict[str, Any]) -> None:
+        super().__init__(timeout=300)
+        self.add_item(EditDetailsButton(entry))
+        self.add_item(EditColorButton(entry["id"]))
+        self.add_item(EditYoutubeButton(entry["id"], entry.get("youtube_link")))
+        self.add_item(EditImagesButton(entry["id"]))
+
+
+class EditEntryButton(ui.Button):
+    def __init__(self) -> None:
+        super().__init__(label="✏️ Bearbeiten", style=discord.ButtonStyle.primary, row=3)
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        view: "DeleteResultsView" = self.view  # type: ignore[assignment]
+        if not view.results:
+            await interaction.response.defer()
+            return
+        entry = view.results[view.index]
+        actions_view = EditActionsView(entry)
+        await interaction.response.send_message(
+            f"✏️ Was möchtest du an **{entry['name']}** (ID {entry['id']}) ändern?",
+            view=actions_view,
+            ephemeral=True,
+        )
+
+
 class DeleteConfirmButton(ui.Button):
     def __init__(self) -> None:
         super().__init__(label="🗑️ Diesen Eintrag löschen", style=discord.ButtonStyle.danger, row=2)
@@ -1890,6 +2480,11 @@ class DeleteResultsView(ui.View):
                 self.add_item(ui.Button(label="💬 Zum Forum-Beitrag", url=url, row=2))
             if r.get("youtube_link"):
                 self.add_item(ui.Button(label="▶️ Tutorial ansehen", url=r["youtube_link"], row=2))
+
+        edit_btn = EditEntryButton()
+        edit_btn.disabled = not self.results
+        edit_btn.row = 3
+        self.add_item(edit_btn)
 
         delete_btn = DeleteConfirmButton()
         delete_btn.disabled = not self.results
