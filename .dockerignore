@@ -6,3 +6,4 @@ data.db
 .git/
 .gitignore
 README.md
+.venv

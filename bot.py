@@ -21,11 +21,35 @@ from views import (
     ForumEditButton,
     SearchView,
     _category_emoji,
-    _delete_farm_forum_post,
+    _delete_forum_post,
 )
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+
+# Bot-Status ("Spielt ..."/"Schaut ..."/"Hört ..."/"Tritt an in ...") - beliebig
+# über die .env-Datei anpassbar, siehe .env.example. Ohne Angabe wird "Spielt
+# Minecraft" verwendet.
+ACTIVITY_TYPE_MAP = {
+    "playing": discord.ActivityType.playing,
+    "watching": discord.ActivityType.watching,
+    "listening": discord.ActivityType.listening,
+    "competing": discord.ActivityType.competing,
+}
+ACTIVITY_TYPE = os.getenv("BOT_ACTIVITY_TYPE", "playing").strip().lower()
+ACTIVITY_NAME = os.getenv("BOT_ACTIVITY_NAME", "Minecraft").strip()
+
+# Online-Status (der farbige Punkt am Bot-Icon) - ebenfalls über die .env
+# anpassbar. "offline" zeigt den Bot für andere als offline an (Discord nennt
+# das intern "invisible"), der Bot bleibt dabei aber ganz normal online/aktiv.
+STATUS_MAP = {
+    "online": discord.Status.online,
+    "idle": discord.Status.idle,
+    "dnd": discord.Status.dnd,
+    "offline": discord.Status.invisible,
+    "invisible": discord.Status.invisible,
+}
+BOT_STATUS = os.getenv("BOT_STATUS", "online").strip().lower()
 
 intents = discord.Intents.default()
 intents.message_content = True  # nötig, um hochgeladene Bilder im Eintragen-Channel zu erkennen
@@ -51,6 +75,11 @@ bot = FinderBot()
 @bot.event
 async def on_ready() -> None:
     print(f"Eingeloggt als {bot.user} (ID: {bot.user.id})")
+
+    activity_type = ACTIVITY_TYPE_MAP.get(ACTIVITY_TYPE, discord.ActivityType.playing)
+    status = STATUS_MAP.get(BOT_STATUS, discord.Status.online)
+    activity = discord.Activity(type=activity_type, name=ACTIVITY_NAME) if ACTIVITY_NAME else None
+    await bot.change_presence(status=status, activity=activity)
 
 
 @bot.command(name="sync")
@@ -152,6 +181,40 @@ async def setup_farm_forum(interaction: discord.Interaction, channel: discord.Fo
 
 
 @bot.tree.command(
+    name="setup_struktur_forum",
+    description="Verknüpft einen Forum-Channel für automatische Struktur-Beiträge (Admin)",
+)
+@app_commands.describe(
+    channel="Der Forum-Channel, in dem für neue Strukturen automatisch ein Beitrag erstellt werden soll"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_struktur_forum(interaction: discord.Interaction, channel: discord.ForumChannel) -> None:
+    await db.set_config("struktur_forum_channel_id", str(channel.id))
+    await interaction.response.send_message(
+        f"✅ {channel.mention} ist jetzt verknüpft. Für jede neu eingetragene Struktur "
+        "wird dort automatisch ein Beitrag mit Koordinaten, Beschreibung und Tags erstellt.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="setup_biom_forum",
+    description="Verknüpft einen Forum-Channel für automatische Biom-Beiträge (Admin)",
+)
+@app_commands.describe(
+    channel="Der Forum-Channel, in dem für neue Biome automatisch ein Beitrag erstellt werden soll"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_biom_forum(interaction: discord.Interaction, channel: discord.ForumChannel) -> None:
+    await db.set_config("biom_forum_channel_id", str(channel.id))
+    await interaction.response.send_message(
+        f"✅ {channel.mention} ist jetzt verknüpft. Für jedes neu eingetragene Biom "
+        "wird dort automatisch ein Beitrag mit Koordinaten, Beschreibung und Tags erstellt.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
     name="eintrag_loeschen",
     description="Löscht einen Eintrag - per ID direkt oder interaktiv per Suche/Durchklicken (Admin)",
 )
@@ -167,7 +230,7 @@ async def eintrag_loeschen(interaction: discord.Interaction, eintrag_id: Optiona
         if deleted:
             await interaction.response.send_message(f"🗑️ Eintrag {eintrag_id} wurde gelöscht.", ephemeral=True)
             if entry:
-                await _delete_farm_forum_post(interaction.guild, entry.get("forum_thread_id"))
+                await _delete_forum_post(interaction.guild, entry.get("forum_thread_id"))
                 await log_action(
                     interaction.guild,
                     discord.Embed(
@@ -195,6 +258,8 @@ async def eintrag_loeschen(interaction: discord.Interaction, eintrag_id: Optiona
 @setup_suchen.error
 @setup_log.error
 @setup_farm_forum.error
+@setup_struktur_forum.error
+@setup_biom_forum.error
 @eintrag_loeschen.error
 async def admin_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
     if isinstance(error, app_commands.MissingPermissions):

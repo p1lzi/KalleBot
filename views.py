@@ -6,13 +6,17 @@ Ablauf Eintragen:  Button -> Dropdown (Struktur, Biom oder Farm?) -> Dropdown (k
                    Eintrag, ggf. über mehrere Seiten mit Pfeil-Buttons und einem
                    Such-Button zum Filtern) -> Modal (Name, Koordinaten, Beschreibung,
                    bei Farmen zusätzlich Specs) -> ephemere Bestätigung -> optional Tags
-                   (vorgeschlagen: Overworld/Nether/End, plus eigene Tags) und ein
-                   YouTube-Tutorial-Link -> Bilder werden im Channel gesendet, vom Bot
-                   gruppiert in einen versteckten Archiv-Channel kopiert (damit die Links
-                   dauerhaft gültig bleiben) und erst danach (nach Klick auf "✅ Fertig"
-                   oder Timeout) werden die ursprünglichen Nachrichten gelöscht. Über
-                   "📝 Bilder beschreiben" kann man den Bildern noch Beschreibungen
-                   hinzufügen.
+                   (vorgeschlagen: Overworld/Nether/End, plus eigene Tags, bei jeder
+                   Kategorie) -> bei Farmen zusätzlich ein YouTube-Tutorial-Link -> bei
+                   jeder Kategorie optional eine individuelle Embed-Farbe -> Bilder
+                   werden im Channel gesendet, vom Bot gruppiert in einen versteckten
+                   Archiv-Channel kopiert (damit die Links dauerhaft gültig bleiben) und
+                   erst danach (nach Klick auf "✅ Fertig" oder Timeout) werden die
+                   ursprünglichen Nachrichten gelöscht. Über "📝 Bilder beschreiben" kann
+                   man den Bildern noch Beschreibungen hinzufügen. Ist für die jeweilige
+                   Kategorie ein Forum-Channel verknüpft (/setup_struktur_forum,
+                   /setup_biom_forum, /setup_farm_forum), wird zusätzlich automatisch
+                   ein Forum-Beitrag mit den Tags als echte Discord-Forum-Tags erstellt.
 
 Ablauf Suchen:     Button -> Dropdown (Struktur, Biom oder Farm?) -> Dropdown (konkreter
                    Eintrag oder "Alle", nur Kategorien mit vorhandenen Einträgen, ggf.
@@ -294,25 +298,44 @@ async def _apply_forum_tags(thread: discord.Thread, tags_str: Optional[str]) -> 
         pass
 
 
-async def _create_farm_forum_post(
+def _forum_config_key(category: str) -> Optional[str]:
+    """Liefert den Config-Key des passenden Forum-Channels für die Kategorie
+    (jede Oberkategorie - Struktur/Biom/Farm - kann einen eigenen Forum-Channel
+    haben)."""
+    if category in _STRUCTURE_LABELS:
+        return "struktur_forum_channel_id"
+    if category in _BIOME_LABELS:
+        return "biom_forum_channel_id"
+    if category in _FARM_LABELS:
+        return "farm_forum_channel_id"
+    return None
+
+
+async def _create_forum_post(
     guild: Optional[discord.Guild],
     entry_id: int,
     name: str,
+    category: str,
     embeds: List[discord.Embed],
     tags: Optional[str] = None,
 ) -> None:
     """
-    Erstellt automatisch einen Forum-Beitrag für eine neu eingetragene Farm, falls
-    per /setup_farm_forum ein Forum-Channel verknüpft wurde. Ohne Verknüpfung
-    passiert nichts - kein Fehler, einfach nur kein Beitrag. Vorhandene Tags
-    werden dabei als echte Discord-Forum-Tags angewendet, damit man später im
-    Forum danach filtern/suchen kann. Der Beitrag bekommt außerdem
-    "✏️ Bearbeiten"/"🗑️ Löschen"-Buttons.
+    Erstellt automatisch einen Forum-Beitrag für einen neuen Eintrag, falls für
+    dessen Kategorie (Struktur/Biom/Farm) per /setup_struktur_forum,
+    /setup_biom_forum bzw. /setup_farm_forum ein Forum-Channel verknüpft wurde.
+    Ohne Verknüpfung passiert nichts - kein Fehler, einfach nur kein Beitrag.
+    Vorhandene Tags werden dabei als echte Discord-Forum-Tags angewendet, damit
+    man später im Forum danach filtern/suchen kann. Der Beitrag bekommt
+    außerdem "✏️ Bearbeiten"/"🗑️ Löschen"-Buttons.
     """
     if guild is None:
         return
 
-    channel_id = await db.get_config("farm_forum_channel_id")
+    config_key = _forum_config_key(category)
+    if config_key is None:
+        return
+
+    channel_id = await db.get_config(config_key)
     if not channel_id:
         return
 
@@ -335,7 +358,7 @@ async def _create_farm_forum_post(
         pass
 
 
-async def _get_farm_forum_thread(guild: Optional[discord.Guild], thread_id: Optional[int]) -> Optional[discord.Thread]:
+async def _get_forum_thread(guild: Optional[discord.Guild], thread_id: Optional[int]) -> Optional[discord.Thread]:
     if guild is None or not thread_id:
         return None
     try:
@@ -347,22 +370,22 @@ async def _get_farm_forum_thread(guild: Optional[discord.Guild], thread_id: Opti
         return None
 
 
-async def _sync_farm_forum_post(guild: Optional[discord.Guild], entry_id: int) -> None:
+async def _sync_forum_post(guild: Optional[discord.Guild], entry_id: int) -> None:
     """
-    Aktualisiert den bestehenden Forum-Beitrag einer Farm neu (z.B. nachdem eine
-    Bildbeschreibung oder ein Tag nachträglich gesetzt wurde), damit der Beitrag
-    im Forum immer dem aktuellen Stand entspricht.
+    Aktualisiert den bestehenden Forum-Beitrag eines Eintrags neu (z.B. nachdem
+    eine Bildbeschreibung oder ein Tag nachträglich gesetzt wurde), damit der
+    Beitrag im Forum immer dem aktuellen Stand entspricht.
     """
     entry = await db.get_entry(entry_id)
     if not entry or not entry.get("forum_thread_id"):
         return
 
-    thread = await _get_farm_forum_thread(guild, entry["forum_thread_id"])
+    thread = await _get_forum_thread(guild, entry["forum_thread_id"])
     if thread is None:
         return
 
     images = await db.get_images_full(entry_id)
-    embeds = _build_farm_forum_embeds(
+    embeds = _build_forum_embeds(
         name=entry["name"],
         category=entry["typ"],
         coord_str=_format_coords(entry),
@@ -386,9 +409,9 @@ async def _sync_farm_forum_post(guild: Optional[discord.Guild], entry_id: int) -
     await _apply_forum_tags(thread, entry.get("tags"))
 
 
-async def _delete_farm_forum_post(guild: Optional[discord.Guild], thread_id: Optional[int]) -> None:
-    """Löscht den zu einer Farm gehörenden Forum-Beitrag, falls vorhanden."""
-    thread = await _get_farm_forum_thread(guild, thread_id)
+async def _delete_forum_post(guild: Optional[discord.Guild], thread_id: Optional[int]) -> None:
+    """Löscht den zu einem Eintrag gehörenden Forum-Beitrag, falls vorhanden."""
+    thread = await _get_forum_thread(guild, thread_id)
     if thread is None:
         return
     try:
@@ -498,7 +521,7 @@ class ForumEditModal(ui.Modal, title="Eintrag bearbeiten"):
             ),
         )
 
-        await _sync_farm_forum_post(interaction.guild, self.entry_id)
+        await _sync_forum_post(interaction.guild, self.entry_id)
 
 
 class ForumEditButton(discord.ui.DynamicItem[discord.ui.Button], template=r"forum_edit:(?P<entry_id>\d+)"):
@@ -597,7 +620,7 @@ class ForumDeleteButton(discord.ui.DynamicItem[discord.ui.Button], template=r"fo
                 pass
 
 
-def _build_farm_forum_embeds(
+def _build_forum_embeds(
     name: str,
     category: str,
     coord_str: str,
@@ -611,7 +634,7 @@ def _build_farm_forum_embeds(
     custom_color: Optional[str] = None,
 ) -> List[discord.Embed]:
     """
-    Baut ein übersichtliches Embed-Set für den Farm-Forum-Beitrag: ein Haupt-Embed
+    Baut ein übersichtliches Embed-Set für den Forum-Beitrag: ein Haupt-Embed
     mit den Eckdaten, ein separates Details-Embed für Beschreibung/Specs/Tags/
     YouTube-Link (falls vorhanden) und je ein eigenes Embed pro Bild inkl.
     Bildbeschreibung als Footer.
@@ -887,7 +910,7 @@ class ImageCaptionModal(ui.Modal, title="Bild beschreiben"):
         )
         # Falls die Farm bereits einen Forum-Beitrag hat, diesen mit der neuen
         # Bildbeschreibung aktualisieren.
-        await _sync_farm_forum_post(interaction.guild, self.gallery.entry_id)
+        await _sync_forum_post(interaction.guild, self.gallery.entry_id)
 
 
 class ImageCaptionPrevButton(ui.Button):
@@ -1047,7 +1070,7 @@ class YoutubeLinkModal(ui.Modal, title="YouTube-Tutorial verlinken"):
         await interaction.response.edit_message(content=text, view=None)
 
         # Falls dazu bereits ein Farm-Forum-Beitrag existiert, diesen aktualisieren.
-        await _sync_farm_forum_post(interaction.guild, self.tags_view.entry_id)
+        await _sync_forum_post(interaction.guild, self.tags_view.entry_id)
 
         # Anschließend optional eine individuelle Embed-Farbe für diesen Eintrag anbieten.
         color_view = ColorView(self.tags_view.entry_id)
@@ -1150,7 +1173,7 @@ class ColorView(ui.View):
             else "✅ Es wird die Standardfarbe der Kategorie verwendet."
         )
         await interaction.response.edit_message(content=text, view=None)
-        await _sync_farm_forum_post(interaction.guild, self.entry_id)
+        await _sync_forum_post(interaction.guild, self.entry_id)
 
 
 class TagPresetSelect(ui.Select):
@@ -1201,24 +1224,46 @@ class AddCustomTagButton(ui.Button):
 
 
 class SaveTagsButton(ui.Button):
-    def __init__(self) -> None:
-        super().__init__(label="💾 Weiter (YouTube-Link)", style=discord.ButtonStyle.success, row=1)
+    def __init__(self, include_youtube: bool) -> None:
+        label = "💾 Weiter (YouTube-Link)" if include_youtube else "💾 Speichern"
+        super().__init__(label=label, style=discord.ButtonStyle.success, row=1)
+        self.include_youtube = include_youtube
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view: "TagsView" = self.view  # type: ignore[assignment]
-        await interaction.response.send_modal(YoutubeLinkModal(view))
+        if self.include_youtube:
+            await interaction.response.send_modal(YoutubeLinkModal(view))
+            return
+
+        # Struktur/Biom: kein YouTube-Link - Tags direkt speichern und danach
+        # nur noch die Farbauswahl anbieten.
+        tags_str = view.tags_string()
+        await db.set_entry_tags(view.entry_id, tags_str)
+        text = f"✅ Tags gespeichert: {tags_str}" if tags_str else "✅ Gespeichert (keine Tags)."
+        await interaction.response.edit_message(content=text, view=None)
+        await _sync_forum_post(interaction.guild, view.entry_id)
+
+        color_view = ColorView(view.entry_id)
+        await interaction.followup.send(
+            "🎨 Möchtest du für diesen Eintrag eine eigene Embed-Farbe festlegen? (optional, "
+            "überschreibt die Standardfarbe der Kategorie)",
+            view=color_view,
+            ephemeral=True,
+        )
 
 
 class TagsView(ui.View):
     """
     Optionale Ansicht nach dem Eintragen: vorgeschlagene Tags (Overworld/Nether/End)
-    per Dropdown auswählen, eigene Tags frei hinzufügen, danach optional einen
-    YouTube-Tutorial-Link hinterlegen.
+    per Dropdown auswählen, eigene Tags frei hinzufügen. Bei Farmen kann danach noch
+    ein YouTube-Tutorial-Link hinterlegt werden; bei Struktur/Biom entfällt dieser
+    Schritt und es geht direkt weiter zur Farbauswahl.
     """
 
-    def __init__(self, entry_id: int) -> None:
+    def __init__(self, entry_id: int, include_youtube: bool = True) -> None:
         super().__init__(timeout=300)
         self.entry_id = entry_id
+        self.include_youtube = include_youtube
         self.preset_tags: List[str] = []
         self.custom_tags: List[str] = []
         self.rebuild_buttons()
@@ -1234,13 +1279,15 @@ class TagsView(ui.View):
         self.clear_items()
         self.add_item(TagPresetSelect(self.preset_tags))
         self.add_item(AddCustomTagButton())
-        self.add_item(SaveTagsButton())
+        self.add_item(SaveTagsButton(self.include_youtube))
 
     def render_content(self) -> str:
         tags_display = ", ".join(self.all_tags()) if self.all_tags() else "_noch keine_"
+        next_step = "einen YouTube-Tutorial-Link" if self.include_youtube else "die Embed-Farbe"
         return (
-            "🏷️ Wähle passende Tags aus oder füge eigene hinzu, danach optional einen "
-            f"YouTube-Tutorial-Link (Button \"💾 Weiter\").\n**Aktuelle Tags:** {tags_display}"
+            f"🏷️ Wähle passende Tags aus oder füge eigene hinzu, danach geht es weiter zu {next_step} "
+            f"(Button \"💾 {'Weiter' if self.include_youtube else 'Speichern'}\").\n"
+            f"**Aktuelle Tags:** {tags_display}"
         )
 
 
@@ -1439,20 +1486,12 @@ class EntryModal(ui.Modal, title="Neuen Eintrag erstellen"):
 
         await interaction.followup.send(content="✅ Eintrag gespeichert!", embed=embed, ephemeral=True)
 
-        if self.category in _FARM_LABELS:
-            # Tags & YouTube-Link ergeben nur bei Farmen Sinn (Tutorials, Dimension
-            # etc.) - bei Struktur/Biom überspringen wir das und bieten direkt nur
-            # die optionale Embed-Farbe an.
-            tags_view = TagsView(entry_id)
-            await interaction.followup.send(tags_view.render_content(), view=tags_view, ephemeral=True)
-        else:
-            color_view = ColorView(entry_id)
-            await interaction.followup.send(
-                "🎨 Möchtest du für diesen Eintrag eine eigene Embed-Farbe festlegen? (optional, "
-                "überschreibt die Standardfarbe der Kategorie)",
-                view=color_view,
-                ephemeral=True,
-            )
+        # Tags gibt es bei jeder Kategorie (z.B. Overworld/Nether/End). Der
+        # YouTube-Link-Schritt danach ist nur bei Farmen sinnvoll (Tutorials) -
+        # bei Struktur/Biom geht es nach den Tags direkt zur Farbauswahl.
+        include_youtube = self.category in _FARM_LABELS
+        tags_view = TagsView(entry_id, include_youtube=include_youtube)
+        await interaction.followup.send(tags_view.render_content(), view=tags_view, ephemeral=True)
 
         finish_view = FinishUploadView(interaction.user.id)
         prompt_message = await interaction.followup.send(
@@ -1601,32 +1640,33 @@ class EntryModal(ui.Modal, title="Neuen Eintrag erstellen"):
                 "ℹ️ Kein Bild hochgeladen, Eintrag wurde ohne Bild gespeichert.", ephemeral=True
             )
 
-        # Forum-Beitrag für Farmen erst JETZT erstellen - so sind eventuell
-        # hochgeladene Bilder bereits archiviert und können mit reinschrieben werden.
-        if self.category in _FARM_LABELS:
-            # Frisch aus der DB laden, falls Tags/YouTube-Link/Farbe schon gesetzt
-            # wurden, während noch Bilder hochgeladen wurden.
-            current_entry = await db.get_entry(entry_id)
-            forum_embeds = _build_farm_forum_embeds(
-                name=self.name.value.strip(),
-                category=self.category,
-                coord_str=self._coord_str,
-                beschreibung=self._beschreibung_value,
-                specs=self._specs_value,
-                tags=current_entry.get("tags") if current_entry else None,
-                youtube_link=current_entry.get("youtube_link") if current_entry else None,
-                custom_color=current_entry.get("color") if current_entry else None,
-                creator=str(interaction.user),
-                entry_id=entry_id,
-                images=images_full,
-            )
-            await _create_farm_forum_post(
-                interaction.guild,
-                entry_id,
-                self.name.value.strip(),
-                forum_embeds,
-                tags=current_entry.get("tags") if current_entry else None,
-            )
+        # Forum-Beitrag erst JETZT erstellen (falls für diese Kategorie ein
+        # Forum-Channel verknüpft ist) - so sind eventuell hochgeladene Bilder
+        # bereits archiviert und können mit reinschrieben werden.
+        # Frisch aus der DB laden, falls Tags/YouTube-Link/Farbe schon gesetzt
+        # wurden, während noch Bilder hochgeladen wurden.
+        current_entry = await db.get_entry(entry_id)
+        forum_embeds = _build_forum_embeds(
+            name=self.name.value.strip(),
+            category=self.category,
+            coord_str=self._coord_str,
+            beschreibung=self._beschreibung_value,
+            specs=self._specs_value,
+            tags=current_entry.get("tags") if current_entry else None,
+            youtube_link=current_entry.get("youtube_link") if current_entry else None,
+            custom_color=current_entry.get("color") if current_entry else None,
+            creator=str(interaction.user),
+            entry_id=entry_id,
+            images=images_full,
+        )
+        await _create_forum_post(
+            interaction.guild,
+            entry_id,
+            self.name.value.strip(),
+            self.category,
+            forum_embeds,
+            tags=current_entry.get("tags") if current_entry else None,
+        )
 
 
 class EntryTypeSelect(TypeSelect):
@@ -2205,7 +2245,7 @@ class ImageManageCaptionModal(ui.Modal, title="Bildbeschreibung ändern"):
         await interaction.response.edit_message(
             content=self.gallery.render_content(), embed=self.gallery.build_embed(), view=self.gallery
         )
-        await _sync_farm_forum_post(interaction.guild, self.gallery.entry_id)
+        await _sync_forum_post(interaction.guild, self.gallery.entry_id)
 
 
 class ImageManageCaptionButton(ui.Button):
@@ -2240,7 +2280,7 @@ class ImageManageDeleteButton(ui.Button):
         await interaction.response.edit_message(
             content=view.render_content(), embed=view.build_embed(), view=view
         )
-        await _sync_farm_forum_post(interaction.guild, view.entry_id)
+        await _sync_forum_post(interaction.guild, view.entry_id)
 
 
 class ImageManageAddButton(ui.Button):
@@ -2257,7 +2297,7 @@ class ImageManageAddButton(ui.Button):
         await interaction.followup.send(
             content=view.render_content(), embed=view.build_embed(), view=view, ephemeral=True
         )
-        await _sync_farm_forum_post(interaction.guild, view.entry_id)
+        await _sync_forum_post(interaction.guild, view.entry_id)
 
 
 class ImageManageView(ui.View):
@@ -2329,7 +2369,7 @@ class EditYoutubeLinkModal(ui.Modal, title="YouTube-Link ändern"):
         await db.set_entry_youtube(self.entry_id, link)
         text = f"✅ YouTube-Link aktualisiert: {link}" if link else "✅ YouTube-Link entfernt."
         await interaction.response.edit_message(content=text, view=None)
-        await _sync_farm_forum_post(interaction.guild, self.entry_id)
+        await _sync_forum_post(interaction.guild, self.entry_id)
 
 
 class EditDetailsButton(ui.Button):
@@ -2388,7 +2428,8 @@ class EditActionsView(ui.View):
         super().__init__(timeout=300)
         self.add_item(EditDetailsButton(entry))
         self.add_item(EditColorButton(entry["id"]))
-        self.add_item(EditYoutubeButton(entry["id"], entry.get("youtube_link")))
+        if entry.get("typ") in _FARM_LABELS:
+            self.add_item(EditYoutubeButton(entry["id"], entry.get("youtube_link")))
         self.add_item(EditImagesButton(entry["id"]))
 
 
@@ -2422,7 +2463,7 @@ class DeleteConfirmButton(ui.Button):
 
         entry = view.results.pop(view.index)
         await db.delete_entry(entry["id"])
-        await _delete_farm_forum_post(interaction.guild, entry.get("forum_thread_id"))
+        await _delete_forum_post(interaction.guild, entry.get("forum_thread_id"))
 
         if view.index >= len(view.results) and view.index > 0:
             view.index -= 1

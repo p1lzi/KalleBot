@@ -20,20 +20,20 @@ leicht wiederfinden.
   aufgeräumt bleibt. Über den Button "📝 Bilder beschreiben" können die
   hochgeladenen Bilder direkt im Anschluss mit einer kurzen Beschreibung
   versehen werden.
-- **Tags & YouTube-Link (nur bei Farmen) & Farbe (bei allem)**: Nach
-  dem Eintragen einer **Farm** erscheint eine optionale Ansicht zum
-  Vergeben von Tags – per Dropdown aus Vorschlägen (**Overworld,
-  Nether, End**) und/oder frei über "➕ Eigenen Tag hinzufügen" (z.B.
-  "Redstone", "Survival", "1.21"). Danach kann optional ein
-  **YouTube-Tutorial-Link** hinterlegt werden. Bei **Strukturen und
-  Biomen** entfällt dieser Schritt (Tags/YouTube-Link ergeben dort
-  keinen Sinn) – dort wird direkt nur die Farbauswahl angeboten.
-  Am Ende (bei jeder Kategorie) kann noch eine **individuelle
-  Embed-Farbe** für genau diesen Eintrag festgelegt werden (Vorschläge
-  wie Rot/Grün/Blau/... oder ein eigener Hex-Code über
-  "🎨 Eigene Farbe (Hex)") – überschreibt die sonst nach Kategorie
-  vergebene Standardfarbe (blau/grün/gold). Alle Schritte sind
-  komplett freiwillig – werden sie übersprungen, hat der Eintrag
+- **Tags (bei allem) & YouTube-Link (nur bei Farmen) & Farbe (bei
+  allem)**: Nach dem Eintragen erscheint bei **jeder Kategorie** eine
+  optionale Ansicht zum Vergeben von Tags – per Dropdown aus
+  Vorschlägen (**Overworld, Nether, End**) und/oder frei über
+  "➕ Eigenen Tag hinzufügen" (z.B. "Redstone", "Survival", "1.21").
+  Bei **Farmen** kann danach noch optional ein **YouTube-Tutorial-Link**
+  hinterlegt werden; bei **Strukturen und Biomen** entfällt nur dieser
+  eine Schritt (YouTube-Links ergeben dort keinen Sinn) – es geht
+  direkt weiter zur Farbauswahl. Am Ende (bei jeder Kategorie) kann
+  noch eine **individuelle Embed-Farbe** für genau diesen Eintrag
+  festgelegt werden (Vorschläge wie Rot/Grün/Blau/... oder ein eigener
+  Hex-Code über "🎨 Eigene Farbe (Hex)") – überschreibt die sonst nach
+  Kategorie vergebene Standardfarbe (blau/grün/gold). Alle Schritte
+  sind komplett freiwillig – werden sie übersprungen, hat der Eintrag
   einfach keine Tags/kein Video/die Standardfarbe.
 - **Duplikat-Warnung im Umkreis**: Beim Eintragen einer **Struktur**
   oder eines **Bioms** (nicht bei Farmen) prüft der Bot, ob im Umkreis
@@ -59,32 +59,36 @@ leicht wiederfinden.
 - **Log-Channel**: Optionaler Channel, in dem neue Einträge, hinzugefügte
   Bilder und Löschungen automatisch protokolliert werden (mit Name,
   Kategorie, ID und wer die Aktion ausgeführt hat).
-- **Farm-Forum**: Optionaler Forum-Channel – wird beim Eintragen einer
-  neuen **Farm** automatisch ein eigener Forum-Beitrag erstellt, sobald
-  auch eventuell hochgeladene Bilder gespeichert sind. Der Beitrag
-  besteht aus mehreren Embeds: ein Haupt-Embed mit Kategorie,
-  Koordinaten und ID, ein separates **"📋 Details"-Embed** für
-  Beschreibung, Specs, Tags und YouTube-Link (nur falls jeweils
-  vorhanden), sowie **ein eigenes Embed pro Bild** inklusive der
+- **Struktur-/Biom-/Farm-Forum**: Bis zu drei unabhängige, optionale
+  Forum-Channel – je einer für Strukturen (`/setup_struktur_forum`),
+  Biome (`/setup_biom_forum`) und Farmen (`/setup_farm_forum`). Ist für
+  die jeweilige Kategorie ein Channel verknüpft, wird beim Eintragen
+  automatisch ein eigener Forum-Beitrag darin erstellt, sobald auch
+  eventuell hochgeladene Bilder gespeichert sind. Der Beitrag besteht
+  aus mehreren Embeds: ein Haupt-Embed mit Kategorie, Koordinaten und
+  ID, ein separates **"📋 Details"-Embed** für Beschreibung, Specs
+  (nur bei Farmen), Tags und YouTube-Link (nur bei Farmen, jeweils nur
+  falls vorhanden), sowie **ein eigenes Embed pro Bild** inklusive der
   jeweiligen Bildbeschreibung als Footer. Zusätzlich werden vergebene
   Tags als **echte Discord-Forum-Tags** am Beitrag angewendet (nicht
-  nur als Text) – fehlen sie noch am Forum-Channel, legt der Bot sie
-  automatisch an (bis zu 20 Tags pro Channel, 5 pro Beitrag sind
-  Discord-Limits). Dadurch lässt sich im Forum-Channel selbst über
-  Discords eingebauten Tag-Filter danach suchen/filtern. Wird eine
-  Bildbeschreibung, ein Tag, ein YouTube-Link oder die Farbe
+  nur als Text) – fehlen sie noch am jeweiligen Forum-Channel, legt
+  der Bot sie automatisch an (bis zu 20 Tags pro Channel, 5 pro
+  Beitrag sind Discord-Limits). Dadurch lässt sich in jedem
+  Forum-Channel über Discords eingebauten Tag-Filter danach
+  suchen/filtern (z.B. alle Strukturen mit Tag "Nether"). Wird eine
+  Bildbeschreibung, ein Tag, ein YouTube-Link (Farmen) oder die Farbe
   nachträglich gesetzt, aktualisiert sich der Forum-Beitrag (inkl.
   Tags) automatisch mit. Löschst du den Eintrag (egal ob per ID oder
   über den interaktiven Löschen-Flow), wird der zugehörige
   Forum-Beitrag ebenfalls automatisch gelöscht. In den Suchergebnissen
-  erscheint zusätzlich ein Link-Button "💬 Zum Forum-Beitrag".
-  Strukturen und Biome erzeugen keinen Forum-Beitrag. Der Forum-Beitrag
-  selbst hat außerdem zwei Buttons **"✏️ Bearbeiten"** und
-  **"🗑️ Löschen"** direkt unter dem Beitrag. "✏️ Bearbeiten" öffnet ein
-  Menü mit vier Optionen:
-  - 📝 **Details** – Name, Koordinaten, Beschreibung, Specs
+  erscheint zusätzlich ein Link-Button "💬 Zum Forum-Beitrag". Der
+  Forum-Beitrag selbst hat außerdem zwei Buttons **"✏️ Bearbeiten"**
+  und **"🗑️ Löschen"** direkt unter dem Beitrag. "✏️ Bearbeiten" öffnet
+  ein Menü mit den für die Kategorie passenden Optionen:
+  - 📝 **Details** – Name, Koordinaten, Beschreibung (bei Farmen
+    zusätzlich Specs)
   - 🎨 **Farbe ändern**
-  - 🔗 **YouTube-Link ändern/entfernen**
+  - 🔗 **YouTube-Link ändern/entfernen** (nur bei Farmen)
   - 🖼️ **Bilder verwalten** – durchblättern, Beschreibungen ändern,
     einzelne Bilder löschen oder neue hinzufügen
 
@@ -126,7 +130,8 @@ leicht wiederfinden.
      Bild-Archiv-Channels), `Create Public Threads`,
      `Send Messages in Threads` und `Manage Threads` (für die
      automatischen Farm-Forum-Beiträge inkl. Aktualisieren/Löschen,
-     nur nötig wenn `/setup_farm_forum` genutzt wird)
+     nur nötig wenn `/setup_struktur_forum`, `/setup_biom_forum` oder
+     `/setup_farm_forum` genutzt wird)
    - Die generierte URL öffnen und den Bot auf euren Server einladen.
 
 ## 2. Projekt einrichten (venv)
@@ -183,6 +188,23 @@ cp .env.example .env
 DISCORD_TOKEN=dein_echter_token
 ```
 
+Optional kannst du dort auch den **Bot-Status** anpassen (wird unter
+dem Bot-Namen als "Spielt ..." angezeigt):
+
+```
+BOT_ACTIVITY_TYPE=playing
+BOT_ACTIVITY_NAME=Minecraft
+```
+
+- `BOT_ACTIVITY_TYPE`: `playing` ("Spielt ..."), `watching`
+  ("Schaut ..."), `listening` ("Hört ...") oder `competing`
+  ("Tritt an in ...")
+- `BOT_ACTIVITY_NAME`: der Text danach, z.B. `Minecraft`,
+  `auf eurem Server`, `nach Strukturen`, ...
+
+Beide Zeilen weglassen/löschen ergibt "Spielt Minecraft" als Standard.
+Änderungen werden erst nach einem Neustart des Bots übernommen.
+
 ## 4. Bot starten
 
 ```bash
@@ -198,16 +220,19 @@ Auf eurem Server, jeweils im gewünschten Channel ausführen:
 - Im Eintragen-Channel: `/setup_eintragen`
 - Im Suchen-Channel: `/setup_suchen`
 - Im Log-Channel (optional): `/setup_log`
+- Für Strukturen (optional): `/setup_struktur_forum channel:#dein-forum-channel`
+- Für Biome (optional): `/setup_biom_forum channel:#dein-forum-channel`
 - Für Farmen (optional): `/setup_farm_forum channel:#dein-forum-channel`
 
 `/setup_eintragen`, `/setup_suchen` und `/setup_log` werden im
-jeweiligen Ziel-Channel ausgeführt und merken sich diesen. Bei
-`/setup_farm_forum` wählst du den Forum-Channel stattdessen direkt als
+jeweiligen Ziel-Channel ausgeführt und merken sich diesen. Bei den drei
+Forum-Commands wählst du den Forum-Channel stattdessen direkt als
 Parameter aus (Discord zeigt beim Tippen von `#` automatisch nur
-Forum-Channel zur Auswahl an) – der Command kann daher von überall aus
-ausgeführt werden. Alle vier Commands erfordern Administrator-Rechte.
-`/setup_eintragen` und `/setup_suchen` posten zusätzlich den
-jeweiligen Button dauerhaft in den Channel.
+Forum-Channel zur Auswahl an) – die Commands können daher von überall
+aus ausgeführt werden, und du kannst für jede Kategorie denselben oder
+unterschiedliche Forum-Channel verwenden. Alle sechs Commands
+erfordern Administrator-Rechte. `/setup_eintragen` und `/setup_suchen`
+posten zusätzlich den jeweiligen Button dauerhaft in den Channel.
 
 ## Weitere Commands
 
