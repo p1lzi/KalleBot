@@ -177,11 +177,26 @@ FARMS: List[Tuple[str, str]] = [
     ("Other Farm", "❓"),
 ]
 
+BASES: List[Tuple[str, str]] = [
+    ("Hauptbase", "🏠"),
+    ("Nebenbase", "🏡"),
+    ("Community-Base", "🏘️"),
+    ("Shop", "🏪"),
+    ("Redstone-Werkstatt", "⚙️"),
+    ("Lager/Sortiersystem", "📦"),
+    ("Bahnhof/Transport-Hub", "🚉"),
+    ("Aussichtsturm", "🗼"),
+    ("Sonstige Base", "❓"),
+]
+
 # Zuordnung von Kategorie-Namen zu Emoji/Farbe für hübschere Embeds.
 _STRUCTURE_LABELS = {label for label, _ in STRUCTURES}
 _BIOME_LABELS = {label for label, _ in BIOMES}
 _FARM_LABELS = {label for label, _ in FARMS}
-_CATEGORY_EMOJI: Dict[str, str] = {label: emoji for label, emoji in STRUCTURES + BIOMES + FARMS}
+_BASE_LABELS = {label for label, _ in BASES}
+_CATEGORY_EMOJI: Dict[str, str] = {
+    label: emoji for label, emoji in STRUCTURES + BIOMES + FARMS + BASES
+}
 
 
 def _category_emoji(category: str) -> str:
@@ -195,12 +210,14 @@ def _category_color(category: str) -> discord.Color:
         return discord.Color.green()
     if category in _FARM_LABELS:
         return discord.Color.gold()
+    if category in _BASE_LABELS:
+        return discord.Color.purple()
     return discord.Color.blurple()
 
 
 def _resolve_color(category: str, custom_hex: Optional[str]) -> discord.Color:
     """Nutzt die individuell für den Eintrag festgelegte Farbe, falls vorhanden,
-    sonst die Standardfarbe je Kategorie (blau/grün/gold)."""
+    sonst die Standardfarbe je Kategorie (blau/grün/gold/lila)."""
     if custom_hex:
         try:
             return discord.Color(int(custom_hex.lstrip("#"), 16))
@@ -209,11 +226,12 @@ def _resolve_color(category: str, custom_hex: Optional[str]) -> discord.Color:
     return _category_color(category)
 
 
-# Konfiguration je nach Oberkategorie (Struktur/Biom/Farm): Liste, Anzeigetext, "Alle"-Label.
+# Konfiguration je nach Oberkategorie (Struktur/Biom/Farm/Base): Liste, Anzeigetext, "Alle"-Label.
 _GROUPS: Dict[str, Tuple[List[Tuple[str, str]], str, str]] = {
     "struktur": (STRUCTURES, "Wähle jetzt die Struktur aus:", "Alle Strukturen"),
     "biom": (BIOMES, "Wähle jetzt das Biom aus:", "Alle Biome"),
     "farm": (FARMS, "Wähle jetzt die Farm aus:", "Alle Farmen"),
+    "base": (BASES, "Wähle jetzt die Base aus:", "Alle Basen"),
 }
 
 
@@ -300,7 +318,7 @@ async def _apply_forum_tags(thread: discord.Thread, tags_str: Optional[str]) -> 
 
 def _forum_config_key(category: str) -> Optional[str]:
     """Liefert den Config-Key des passenden Forum-Channels für die Kategorie
-    (jede Oberkategorie - Struktur/Biom/Farm - kann einen eigenen Forum-Channel
+    (jede Oberkategorie - Struktur/Biom/Farm/Base - kann einen eigenen Forum-Channel
     haben)."""
     if category in _STRUCTURE_LABELS:
         return "struktur_forum_channel_id"
@@ -308,6 +326,8 @@ def _forum_config_key(category: str) -> Optional[str]:
         return "biom_forum_channel_id"
     if category in _FARM_LABELS:
         return "farm_forum_channel_id"
+    if category in _BASE_LABELS:
+        return "base_forum_channel_id"
     return None
 
 
@@ -869,16 +889,19 @@ class DeletePagedCategoryView(PagedCategoryView):
 # --------------------------------------------------------------------------- #
 
 class TypeSelect(ui.Select):
-    """Erster Dropdown-Schritt: Struktur, Biom oder Farm? Unterklassen legen fest,
-    was danach passiert."""
+    """Erster Dropdown-Schritt: Struktur, Biom, Farm oder Base? Unterklassen legen
+    fest, was danach passiert."""
 
     def __init__(self) -> None:
         options = [
             discord.SelectOption(label="Struktur", value="struktur", emoji="🏛️"),
             discord.SelectOption(label="Biom", value="biom", emoji="🌳"),
             discord.SelectOption(label="Farm", value="farm", emoji="🚜"),
+            discord.SelectOption(label="Base", value="base", emoji="🏠"),
         ]
-        super().__init__(placeholder="Struktur, Biom oder Farm?", min_values=1, max_values=1, options=options)
+        super().__init__(
+            placeholder="Struktur, Biom, Farm oder Base?", min_values=1, max_values=1, options=options
+        )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         raise NotImplementedError
@@ -1692,7 +1715,7 @@ class EntryView(ui.View):
     @ui.button(label="📍 Eintragen", style=discord.ButtonStyle.green, custom_id="entry_button")
     async def entry_button(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.send_message(
-            "Ist es eine Struktur, ein Biom oder eine Farm?", view=EntryTypeView(), ephemeral=True
+            "Ist es eine Struktur, ein Biom, eine Farm oder eine Base?", view=EntryTypeView(), ephemeral=True
         )
 
 
@@ -2001,7 +2024,7 @@ class SearchView(ui.View):
     @ui.button(label="🔍 Suchen", style=discord.ButtonStyle.blurple, custom_id="search_button")
     async def search_button(self, interaction: discord.Interaction, button: ui.Button) -> None:
         await interaction.response.send_message(
-            "Suchst du eine Struktur, ein Biom oder eine Farm?", view=SearchTypeView(), ephemeral=True
+            "Suchst du eine Struktur, ein Biom, eine Farm oder eine Base?", view=SearchTypeView(), ephemeral=True
         )
 
 

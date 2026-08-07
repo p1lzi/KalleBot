@@ -13,6 +13,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 
 import database as db
+import orders
 from logs import log_action
 from views import (
     DeleteTypeView,
@@ -65,7 +66,10 @@ class FinderBot(commands.Bot):
         # Neustart des Bots weiter funktionieren.
         self.add_view(EntryView())
         self.add_view(SearchView())
-        self.add_dynamic_items(ForumEditButton, ForumDeleteButton)
+        self.add_view(orders.BestellungView())
+        self.add_dynamic_items(
+            ForumEditButton, ForumDeleteButton, orders.OrderProgressButton, orders.OrderDoneButton
+        )
         await self.tree.sync()
 
 
@@ -215,6 +219,61 @@ async def setup_biom_forum(interaction: discord.Interaction, channel: discord.Fo
 
 
 @bot.tree.command(
+    name="setup_base_forum",
+    description="Verknüpft einen Forum-Channel für automatische Base-Beiträge (Admin)",
+)
+@app_commands.describe(
+    channel="Der Forum-Channel, in dem für neue Basen automatisch ein Beitrag erstellt werden soll"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_base_forum(interaction: discord.Interaction, channel: discord.ForumChannel) -> None:
+    await db.set_config("base_forum_channel_id", str(channel.id))
+    await interaction.response.send_message(
+        f"✅ {channel.mention} ist jetzt verknüpft. Für jede neu eingetragene Base "
+        "wird dort automatisch ein Beitrag mit Koordinaten, Beschreibung und Tags erstellt.",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
+    name="setup_bestellungen",
+    description="Richtet diesen Channel als Bestellungen-Channel ein (Admin)",
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_bestellungen(interaction: discord.Interaction) -> None:
+    embed = discord.Embed(
+        title="📦 Farm-Bestellung aufgeben",
+        description=(
+            "Brauchst du etwas Bestimmtes gefarmt? Klicke auf den Button, um eine "
+            "Bestellung aufzugeben - mit Dringlichkeit, optionalem Ping einer "
+            "bestimmten Person, YouTube-Video und Bildern."
+        ),
+        color=discord.Color.blurple(),
+    )
+    embed.set_footer(text="🟢 Niedrig · 🟡 Mittel · 🟠 Hoch · 🔴 Dringend")
+    await interaction.channel.send(embed=embed, view=orders.BestellungView())
+    await db.set_config("bestellungen_channel_id", str(interaction.channel.id))
+    await interaction.response.send_message("✅ Dieser Channel ist jetzt der Bestellungen-Channel.", ephemeral=True)
+
+
+@bot.tree.command(
+    name="setup_bestellungen_forum",
+    description="Verknüpft einen Forum-Channel für automatische Bestellungs-Beiträge (Admin)",
+)
+@app_commands.describe(
+    channel="Der Forum-Channel, in dem für neue Bestellungen automatisch ein Beitrag erstellt werden soll"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def setup_bestellungen_forum(interaction: discord.Interaction, channel: discord.ForumChannel) -> None:
+    await db.set_config("bestellungen_forum_channel_id", str(channel.id))
+    await interaction.response.send_message(
+        f"✅ {channel.mention} ist jetzt verknüpft. Für jede neue Bestellung wird dort "
+        "automatisch ein Beitrag erstellt (Tags: Dringlichkeit + Offen/In Bearbeitung/Erledigt).",
+        ephemeral=True,
+    )
+
+
+@bot.tree.command(
     name="eintrag_loeschen",
     description="Löscht einen Eintrag - per ID direkt oder interaktiv per Suche/Durchklicken (Admin)",
 )
@@ -260,6 +319,9 @@ async def eintrag_loeschen(interaction: discord.Interaction, eintrag_id: Optiona
 @setup_farm_forum.error
 @setup_struktur_forum.error
 @setup_biom_forum.error
+@setup_base_forum.error
+@setup_bestellungen.error
+@setup_bestellungen_forum.error
 @eintrag_loeschen.error
 async def admin_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError) -> None:
     if isinstance(error, app_commands.MissingPermissions):

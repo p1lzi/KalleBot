@@ -52,6 +52,34 @@ async def init_db() -> None:
             )
             """
         )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS farm_orders (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                item           TEXT NOT NULL,
+                beschreibung   TEXT,
+                urgency        TEXT,
+                youtube_link   TEXT,
+                ping_user_id   INTEGER,
+                status         TEXT DEFAULT 'offen',
+                forum_thread_id INTEGER,
+                ersteller_id   INTEGER,
+                ersteller_name TEXT,
+                erstellt_am    TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+            """
+        )
+        await conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS order_images (
+                id       INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_id INTEGER NOT NULL,
+                url      TEXT NOT NULL,
+                caption  TEXT,
+                kind     TEXT DEFAULT 'request'
+            )
+            """
+        )
 
         # Migration: Falls die Datenbank noch aus einer älteren Version des Bots
         # stammt, existieren manche Spalten evtl. noch nicht - dann per
@@ -273,5 +301,95 @@ async def delete_entry(entry_id: int) -> bool:
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute("DELETE FROM images WHERE entry_id = ?", (entry_id,))
         cur = await conn.execute("DELETE FROM entries WHERE id = ?", (entry_id,))
+        await conn.commit()
+        return cur.rowcount > 0
+
+
+# --------------------------------------------------------------------------- #
+# Farm-Bestellungen
+# --------------------------------------------------------------------------- #
+
+async def add_order(
+    item: str, beschreibung: Optional[str], ersteller_id: int, ersteller_name: str
+) -> int:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        cur = await conn.execute(
+            "INSERT INTO farm_orders (item, beschreibung, ersteller_id, ersteller_name) "
+            "VALUES (?, ?, ?, ?)",
+            (item, beschreibung, ersteller_id, ersteller_name),
+        )
+        await conn.commit()
+        return cur.lastrowid
+
+
+async def get_order(order_id: int) -> Optional[Dict[str, Any]]:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute("SELECT * FROM farm_orders WHERE id = ?", (order_id,)) as cur:
+            row = await cur.fetchone()
+            return dict(row) if row else None
+
+
+async def set_order_urgency(order_id: int, urgency: Optional[str]) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("UPDATE farm_orders SET urgency = ? WHERE id = ?", (urgency, order_id))
+        await conn.commit()
+
+
+async def set_order_ping_user(order_id: int, user_id: Optional[int]) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            "UPDATE farm_orders SET ping_user_id = ? WHERE id = ?", (user_id, order_id)
+        )
+        await conn.commit()
+
+
+async def set_order_youtube(order_id: int, youtube_link: Optional[str]) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            "UPDATE farm_orders SET youtube_link = ? WHERE id = ?", (youtube_link, order_id)
+        )
+        await conn.commit()
+
+
+async def set_order_status(order_id: int, status: str) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("UPDATE farm_orders SET status = ? WHERE id = ?", (status, order_id))
+        await conn.commit()
+
+
+async def set_order_forum_thread(order_id: int, thread_id: int) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            "UPDATE farm_orders SET forum_thread_id = ? WHERE id = ?", (thread_id, order_id)
+        )
+        await conn.commit()
+
+
+async def add_order_images(order_id: int, urls: List[str], kind: str = "request") -> None:
+    if not urls:
+        return
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.executemany(
+            "INSERT INTO order_images (order_id, url, kind) VALUES (?, ?, ?)",
+            [(order_id, url, kind) for url in urls],
+        )
+        await conn.commit()
+
+
+async def get_order_images(order_id: int) -> List[Dict[str, Any]]:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        conn.row_factory = aiosqlite.Row
+        async with conn.execute(
+            "SELECT * FROM order_images WHERE order_id = ?", (order_id,)
+        ) as cur:
+            rows = await cur.fetchall()
+            return [dict(r) for r in rows]
+
+
+async def delete_order(order_id: int) -> bool:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute("DELETE FROM order_images WHERE order_id = ?", (order_id,))
+        cur = await conn.execute("DELETE FROM farm_orders WHERE id = ?", (order_id,))
         await conn.commit()
         return cur.rowcount > 0

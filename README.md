@@ -1,17 +1,20 @@
-# Minecraft Struktur/Biom/Farm-Finder Bot
+# Minecraft Struktur/Biom/Farm/Base-Finder Bot
 
-Ein Discord-Bot, mit dem eure Community gefundene Strukturen, Biome und
-gebaute Farmen (mit Koordinaten und Bildern) einträgt, damit andere sie
-leicht wiederfinden.
+Ein Discord-Bot, mit dem eure Community gefundene Strukturen, Biome,
+gebaute Farmen und Basen (mit Koordinaten und Bildern) einträgt, damit
+andere sie leicht wiederfinden. Zusätzlich gibt es ein Bestellsystem,
+über das man anfragen kann, dass jemand etwas für einen farmt.
 
 ## Funktionen
 
 - **Eintragen-Channel**: Button "📍 Eintragen" → Dropdown "Struktur,
-  Biom oder Farm?" → zweites Dropdown mit der passenden Liste (bei
-  Struktur z.B. Village, Stronghold, Nether Fortress, ...; bei Biom
-  z.B. Desert, Jungle, Savanna, ...; bei Farm z.B. Iron Farm, Gold
-  Farm, Raid Farm, ...) → Formular (Name, Koordinaten, Beschreibung,
-  bei Farmen zusätzlich ein **Specs-Feld** für Rate/AFK-Spot/Notizen).
+  Biom, Farm oder Base?" → zweites Dropdown mit der passenden Liste
+  (bei Struktur z.B. Village, Stronghold, Nether Fortress, ...; bei
+  Biom z.B. Desert, Jungle, Savanna, ...; bei Farm z.B. Iron Farm, Gold
+  Farm, Raid Farm, ...; bei Base z.B. Hauptbase, Shop,
+  Redstone-Werkstatt, ...) → Formular (Name, Koordinaten,
+  Beschreibung, bei Farmen zusätzlich ein **Specs-Feld** für
+  Rate/AFK-Spot/Notizen).
   Alles läuft ephemeral ab, d.h. nur die Person, die einträgt, sieht
   die Zwischenschritte. Anschließend kann man optional Bild(er) in den
   Channel hochladen – der Bot liest sie aus, speichert sie **gruppiert**
@@ -26,8 +29,8 @@ leicht wiederfinden.
   Vorschlägen (**Overworld, Nether, End**) und/oder frei über
   "➕ Eigenen Tag hinzufügen" (z.B. "Redstone", "Survival", "1.21").
   Bei **Farmen** kann danach noch optional ein **YouTube-Tutorial-Link**
-  hinterlegt werden; bei **Strukturen und Biomen** entfällt nur dieser
-  eine Schritt (YouTube-Links ergeben dort keinen Sinn) – es geht
+  hinterlegt werden; bei **Strukturen, Biomen und Basen** entfällt nur
+  dieser eine Schritt (YouTube-Links ergeben dort keinen Sinn) – es geht
   direkt weiter zur Farbauswahl. Am Ende (bei jeder Kategorie) kann
   noch eine **individuelle Embed-Farbe** für genau diesen Eintrag
   festgelegt werden (Vorschläge wie Rot/Grün/Blau/... oder ein eigener
@@ -56,12 +59,32 @@ leicht wiederfinden.
   nachträglich (ohne die Suche neu zu starten) berechnen – alle
   Treffer werden dabei automatisch nach Entfernung sortiert. Komplett
   ephemeral, sichtbar nur für die suchende Person.
+- **Bestellungen-Channel** (eigenständiges System, unabhängig von den
+  Einträgen oben): Button "📦 Bestellung aufgeben" → Modal (Was soll
+  gefarmt werden?, Beschreibung optional) → Dropdown für die
+  **Dringlichkeit** (🟢 Niedrig, 🟡 Mittel, 🟠 Hoch, 🔴 Dringend) →
+  optional eine **bestimmte Person pingen** (Nutzer-Auswahl) → optional
+  ein **YouTube-Video** verlinken (z.B. Tutorial, wo man das Item
+  bekommt) → optional **Bilder** hochladen (z.B. ein Bild des
+  gewünschten Items). Ist ein Bestellungen-Forum verknüpft
+  (`/setup_bestellungen_forum`), wird automatisch ein Forum-Beitrag
+  erstellt (Titel = gewünschtes Item, gepingte Person wird direkt beim
+  Erstellen im Beitrag benachrichtigt) und bekommt automatisch die
+  Tags **"Offen"** sowie die gewählte Dringlichkeit als echte
+  Discord-Forum-Tags. Der Beitrag hat zwei Buttons:
+  - **"🔧 In Bearbeitung"** – setzt den Status um, der Tag wechselt von
+    "Offen" auf "In Bearbeitung".
+  - **"✅ Fertig"** – fragt optional nach einem Bild, wo die Kiste mit
+    den Items steht, setzt den Tag auf "Erledigt" und **pingt die
+    Person, die die Bestellung aufgegeben hat**, direkt im
+    Forum-Beitrag.
 - **Log-Channel**: Optionaler Channel, in dem neue Einträge, hinzugefügte
   Bilder und Löschungen automatisch protokolliert werden (mit Name,
   Kategorie, ID und wer die Aktion ausgeführt hat).
-- **Struktur-/Biom-/Farm-Forum**: Bis zu drei unabhängige, optionale
-  Forum-Channel – je einer für Strukturen (`/setup_struktur_forum`),
-  Biome (`/setup_biom_forum`) und Farmen (`/setup_farm_forum`). Ist für
+- **Struktur-/Biom-/Farm-/Base-Forum**: Bis zu vier unabhängige,
+  optionale Forum-Channel – je einer für Strukturen
+  (`/setup_struktur_forum`), Biome (`/setup_biom_forum`), Farmen
+  (`/setup_farm_forum`) und Basen (`/setup_base_forum`). Ist für
   die jeweilige Kategorie ein Channel verknüpft, wird beim Eintragen
   automatisch ein eigener Forum-Beitrag darin erstellt, sobald auch
   eventuell hochgeladene Bilder gespeichert sind. Der Beitrag besteht
@@ -220,19 +243,23 @@ Auf eurem Server, jeweils im gewünschten Channel ausführen:
 - Im Eintragen-Channel: `/setup_eintragen`
 - Im Suchen-Channel: `/setup_suchen`
 - Im Log-Channel (optional): `/setup_log`
+- Im Bestellungen-Channel (optional): `/setup_bestellungen`
 - Für Strukturen (optional): `/setup_struktur_forum channel:#dein-forum-channel`
 - Für Biome (optional): `/setup_biom_forum channel:#dein-forum-channel`
 - Für Farmen (optional): `/setup_farm_forum channel:#dein-forum-channel`
+- Für Basen (optional): `/setup_base_forum channel:#dein-forum-channel`
+- Für Bestellungen (optional): `/setup_bestellungen_forum channel:#dein-forum-channel`
 
-`/setup_eintragen`, `/setup_suchen` und `/setup_log` werden im
-jeweiligen Ziel-Channel ausgeführt und merken sich diesen. Bei den drei
-Forum-Commands wählst du den Forum-Channel stattdessen direkt als
-Parameter aus (Discord zeigt beim Tippen von `#` automatisch nur
-Forum-Channel zur Auswahl an) – die Commands können daher von überall
-aus ausgeführt werden, und du kannst für jede Kategorie denselben oder
-unterschiedliche Forum-Channel verwenden. Alle sechs Commands
-erfordern Administrator-Rechte. `/setup_eintragen` und `/setup_suchen`
-posten zusätzlich den jeweiligen Button dauerhaft in den Channel.
+`/setup_eintragen`, `/setup_suchen`, `/setup_log` und
+`/setup_bestellungen` werden im jeweiligen Ziel-Channel ausgeführt und
+merken sich diesen. Bei den fünf Forum-Commands wählst du den
+Forum-Channel stattdessen direkt als Parameter aus (Discord zeigt beim
+Tippen von `#` automatisch nur Forum-Channel zur Auswahl an) – die
+Commands können daher von überall aus ausgeführt werden, und du kannst
+für jede Kategorie denselben oder unterschiedliche Forum-Channel
+verwenden. Alle neun Commands erfordern Administrator-Rechte.
+`/setup_eintragen`, `/setup_suchen` und `/setup_bestellungen` posten
+zusätzlich den jeweiligen Button dauerhaft in den Channel.
 
 ## Weitere Commands
 
