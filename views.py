@@ -1054,7 +1054,7 @@ class FinishUploadView(ui.View):
 # --------------------------------------------------------------------------- #
 
 # Vorgeschlagene Tags zur Auswahl - eigene Tags können zusätzlich frei getippt werden.
-PRESET_TAGS: List[str] = ["Overworld", "Nether", "End"]
+PRESET_TAGS: List[str] = ["Overworld", "Nether", "End", "Automatisch", "Semi-Automatisch", "Passiv-Automatisch", "AFK"]
 
 
 class YoutubeLinkModal(ui.Modal, title="YouTube-Tutorial verlinken"):
