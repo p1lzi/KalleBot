@@ -56,11 +56,15 @@ async def init_db() -> None:
             """
             CREATE TABLE IF NOT EXISTS farm_orders (
                 id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                order_type     TEXT DEFAULT 'bestellung',
                 item           TEXT NOT NULL,
                 beschreibung   TEXT,
                 urgency        TEXT,
                 youtube_link   TEXT,
-                ping_user_id   INTEGER,
+                ping_user_ids  TEXT,
+                ping_role_ids  TEXT,
+                claimed_by_id  INTEGER,
+                claimed_by_name TEXT,
                 status         TEXT DEFAULT 'offen',
                 forum_thread_id INTEGER,
                 ersteller_id   INTEGER,
@@ -92,6 +96,11 @@ async def init_db() -> None:
             "ALTER TABLE entries ADD COLUMN youtube_link TEXT",
             "ALTER TABLE entries ADD COLUMN color TEXT",
             "ALTER TABLE images ADD COLUMN caption TEXT",
+            "ALTER TABLE farm_orders ADD COLUMN order_type TEXT DEFAULT 'bestellung'",
+            "ALTER TABLE farm_orders ADD COLUMN ping_user_ids TEXT",
+            "ALTER TABLE farm_orders ADD COLUMN ping_role_ids TEXT",
+            "ALTER TABLE farm_orders ADD COLUMN claimed_by_id INTEGER",
+            "ALTER TABLE farm_orders ADD COLUMN claimed_by_name TEXT",
         ):
             try:
                 await conn.execute(statement)
@@ -310,13 +319,17 @@ async def delete_entry(entry_id: int) -> bool:
 # --------------------------------------------------------------------------- #
 
 async def add_order(
-    item: str, beschreibung: Optional[str], ersteller_id: int, ersteller_name: str
+    item: str,
+    beschreibung: Optional[str],
+    ersteller_id: int,
+    ersteller_name: str,
+    order_type: str = "bestellung",
 ) -> int:
     async with aiosqlite.connect(DB_PATH) as conn:
         cur = await conn.execute(
-            "INSERT INTO farm_orders (item, beschreibung, ersteller_id, ersteller_name) "
-            "VALUES (?, ?, ?, ?)",
-            (item, beschreibung, ersteller_id, ersteller_name),
+            "INSERT INTO farm_orders (item, beschreibung, ersteller_id, ersteller_name, order_type) "
+            "VALUES (?, ?, ?, ?, ?)",
+            (item, beschreibung, ersteller_id, ersteller_name, order_type),
         )
         await conn.commit()
         return cur.lastrowid
@@ -336,10 +349,31 @@ async def set_order_urgency(order_id: int, urgency: Optional[str]) -> None:
         await conn.commit()
 
 
-async def set_order_ping_user(order_id: int, user_id: Optional[int]) -> None:
+async def set_order_ping_users(order_id: int, user_ids: List[int]) -> None:
+    """Speichert die zu pingenden Nutzer als kommagetrennte ID-Liste."""
+    value = ",".join(str(uid) for uid in user_ids) if user_ids else None
     async with aiosqlite.connect(DB_PATH) as conn:
         await conn.execute(
-            "UPDATE farm_orders SET ping_user_id = ? WHERE id = ?", (user_id, order_id)
+            "UPDATE farm_orders SET ping_user_ids = ? WHERE id = ?", (value, order_id)
+        )
+        await conn.commit()
+
+
+async def set_order_ping_roles(order_id: int, role_ids: List[int]) -> None:
+    """Speichert die zu pingenden Rollen als kommagetrennte ID-Liste."""
+    value = ",".join(str(rid) for rid in role_ids) if role_ids else None
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            "UPDATE farm_orders SET ping_role_ids = ? WHERE id = ?", (value, order_id)
+        )
+        await conn.commit()
+
+
+async def set_order_claimed(order_id: int, user_id: Optional[int], user_name: Optional[str]) -> None:
+    async with aiosqlite.connect(DB_PATH) as conn:
+        await conn.execute(
+            "UPDATE farm_orders SET claimed_by_id = ?, claimed_by_name = ? WHERE id = ?",
+            (user_id, user_name, order_id),
         )
         await conn.commit()
 

@@ -60,23 +60,31 @@ andere sie leicht wiederfinden. Zusätzlich gibt es ein Bestellsystem,
   Treffer werden dabei automatisch nach Entfernung sortiert. Komplett
   ephemeral, sichtbar nur für die suchende Person.
 - **Bestellungen-Channel** (eigenständiges System, unabhängig von den
-  Einträgen oben): Button "📦 Bestellung aufgeben" → Modal (Was soll
-  gefarmt werden?, Beschreibung optional) → Dropdown für die
+  Einträgen oben): Button "📋 Bestellung/Auftrag aufgeben" → Auswahl
+  **Bestellung** (Items farmen) oder **Auftrag** (z.B. etwas bauen) →
+  Modal (Frage passt sich an: "Was soll gefarmt werden?" bzw. "Was
+  soll gemacht werden?", Beschreibung optional) → Dropdown für die
   **Dringlichkeit** (🟢 Niedrig, 🟡 Mittel, 🟠 Hoch, 🔴 Dringend) →
-  optional eine **bestimmte Person pingen** (Nutzer-Auswahl) → optional
-  ein **YouTube-Video** verlinken (z.B. Tutorial, wo man das Item
-  bekommt) → optional **Bilder** hochladen (z.B. ein Bild des
+  optional **mehrere Personen und/oder Rollen pingen** (ein einziges
+  Dropdown für beides, bis zu 10 insgesamt) →
+  optional ein **YouTube-Video** verlinken (z.B. Tutorial, wo man das
+  Item bekommt) → optional **Bilder** hochladen (z.B. ein Bild des
   gewünschten Items). Ist ein Bestellungen-Forum verknüpft
   (`/setup_bestellungen_forum`), wird automatisch ein Forum-Beitrag
-  erstellt (Titel = gewünschtes Item, gepingte Person wird direkt beim
-  Erstellen im Beitrag benachrichtigt) und bekommt automatisch die
-  Tags **"Offen"** sowie die gewählte Dringlichkeit als echte
+  erstellt (Titel = gewünschtes Item/Auftrag, alle gepingten Personen
+  und Rollen
+  werden direkt beim Erstellen im Beitrag benachrichtigt) und bekommt
+  automatisch die Tags **"Offen"**, die Art (**"Bestellung"** oder
+  **"Auftrag"**) sowie die gewählte Dringlichkeit als echte
   Discord-Forum-Tags. Der Beitrag hat zwei Buttons:
-  - **"🔧 In Bearbeitung"** – setzt den Status um, der Tag wechselt von
-    "Offen" auf "In Bearbeitung".
+  - **"🔧 In Bearbeitung"** – merkt sich, **wer es übernommen hat**
+    (wird im Beitrag als "🙋 Übernommen von" angezeigt), der Tag
+    wechselt von "Offen" auf "In Bearbeitung". Übernimmt jemand
+    anderes es später erneut, wird das ebenfalls aktualisiert und im
+    Beitrag ersichtlich.
   - **"✅ Fertig"** – fragt optional nach einem Bild, wo die Kiste mit
     den Items steht, setzt den Tag auf "Erledigt" und **pingt die
-    Person, die die Bestellung aufgegeben hat**, direkt im
+    Person, die die Bestellung/den Auftrag aufgegeben hat**, direkt im
     Forum-Beitrag.
 - **Log-Channel**: Optionaler Channel, in dem neue Einträge, hinzugefügte
   Bilder und Löschungen automatisch protokolliert werden (mit Name,
@@ -185,6 +193,19 @@ und `docker-compose.yml` liegen bereits im Projekt):
 # .env vorher wie in Schritt 3 beschrieben anlegen, dann:
 docker compose up -d --build
 ```
+
+⚠️ **Wichtig:** Nach jeder Code-Änderung (z.B. neue/aktualisierte `.py`-Dateien)
+muss der Container **neu gebaut** werden, ein reiner Neustart reicht nicht:
+
+```bash
+docker compose up -d --build
+```
+
+`docker compose restart` oder ein Neustart über Docker Desktop starten nur den
+**alten** Container mit dem **alten** Code neu - Änderungen wie das
+Bestellsystem (`orders.py`) tauchen dann nie auf. Prüfe außerdem mit
+`docker compose logs -f`, ob beim Start Fehler auftauchen (z.B. fehlende
+Datei, Import-Fehler).
 
 Das startet den Bot im Hintergrund und mountet `data.db` als Datei ins
 Projektverzeichnis, damit die Datenbank auch Neustarts/Neubauten des
@@ -298,6 +319,41 @@ zusätzlich den jeweiligen Button dauerhaft in den Channel.
 
 ## Hinweise
 
+- **Rollen pingen funktioniert nicht:** Damit eine gepingte Rolle
+  tatsächlich benachrichtigt (nicht nur verlinkt) wird, muss die Rolle
+  entweder in ihren Rolleneinstellungen "Allow anyone to @mention this
+  role" aktiviert haben, oder der Bot braucht die Berechtigung
+  `Mention @everyone, @here, and All Roles` im jeweiligen
+  Bestellungen-Forum-Channel.
+- **Bestellungen/Aufträge werden nicht erstellt (Docker):** Meistens
+  einer dieser drei Gründe:
+  1. Das Image wurde nach dem letzten Code-Update nicht neu gebaut
+     (siehe Warnung in Abschnitt 2 - `docker compose up -d --build`,
+     nicht nur `restart`).
+  2. `/setup_bestellungen` wurde nicht ausgeführt - ohne das gibt es
+     gar keinen "📋 Bestellung/Auftrag aufgeben"-Button.
+  3. `/setup_bestellungen_forum` wurde nicht ausgeführt - dann wird
+     die Bestellung zwar ganz normal in der Datenbank angelegt (die
+     ephemeren Bestätigungen erscheinen), es entsteht aber **kein**
+     Forum-Beitrag, weil kein Forum-Channel verknüpft ist. Das ist
+     kein Fehler, sondern Absicht (optionales Feature).
+
+  Falls es weiterhin nicht klappt: `docker compose logs -f` direkt
+  nach dem Klick auf den Button ansehen - dort steht, ob z.B. ein
+  Import-Fehler oder eine fehlende Berechtigung (siehe
+  `Create Public Threads`/`Send Messages in Threads`/`Manage Threads`
+  weiter oben) den Fehler verursacht.
+- Falls `data.db` beim allerersten Start über `docker compose up`
+  noch nicht existiert, legen manche Docker-Versionen (vor allem
+  ältere Docker-Desktop-Versionen unter Windows) beim Bind-Mount aus
+  Versehen einen **Ordner** namens `data.db` statt einer Datei an -
+  dann startet der Bot gar nicht erst richtig (Fehler beim
+  Datenbankzugriff, betrifft dann alle Funktionen, nicht nur
+  Bestellungen). Prüfen mit `docker compose logs -f`; falls das der
+  Fall ist: Container stoppen, den Ordner `data.db` löschen, eine
+  leere Datei `data.db` manuell anlegen (z.B. `type nul > data.db`
+  unter Windows oder `touch data.db` unter Linux/Mac) und den
+  Container erneut starten.
 - Koordinaten können als `X Y Z` oder `X Z` eingegeben werden.
 - Die Dropdown-Listen (`STRUCTURES` für Strukturen, `BIOMES` für Biome,
   `FARMS` für Farmen) können in `views.py` beliebig angepasst/erweitert

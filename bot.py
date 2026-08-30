@@ -242,11 +242,12 @@ async def setup_base_forum(interaction: discord.Interaction, channel: discord.Fo
 @app_commands.checks.has_permissions(administrator=True)
 async def setup_bestellungen(interaction: discord.Interaction) -> None:
     embed = discord.Embed(
-        title="📦 Farm-Bestellung aufgeben",
+        title="📋 Bestellung oder Auftrag aufgeben",
         description=(
-            "Brauchst du etwas Bestimmtes gefarmt? Klicke auf den Button, um eine "
-            "Bestellung aufzugeben - mit Dringlichkeit, optionalem Ping einer "
-            "bestimmten Person, YouTube-Video und Bildern."
+            "Brauchst du etwas Bestimmtes gefarmt (**Bestellung**) oder soll jemand "
+            "etwas anderes für dich erledigen, z.B. einen Weg bauen (**Auftrag**)? "
+            "Klicke auf den Button und wähle - mit Dringlichkeit, optionalem Ping "
+            "mehrerer Personen, YouTube-Video und Bildern."
         ),
         color=discord.Color.blurple(),
     )

@@ -295,8 +295,8 @@ async def _resolve_forum_tags(channel: discord.ForumChannel, tag_names: List[str
                     tag = existing_after.get(n[:20].lower())
                     if tag:
                         resolved.append(tag)
-            except discord.HTTPException:
-                pass
+            except discord.HTTPException as e:
+                print(f"[Forum] Konnte Tags {to_create} nicht am Channel {channel.id} anlegen: {e}")
 
     # Discord erlaubt maximal 5 angewendete Tags pro Forum-Beitrag.
     return resolved[:5]
@@ -357,10 +357,18 @@ async def _create_forum_post(
 
     channel_id = await db.get_config(config_key)
     if not channel_id:
+        print(
+            f"[Forum] Kein Forum-Channel für Kategorie '{category}' konfiguriert "
+            f"(Config-Key '{config_key}' ist leer) - Eintrag #{entry_id} bekommt keinen Forum-Beitrag."
+        )
         return
 
     channel = guild.get_channel(int(channel_id))
     if not isinstance(channel, discord.ForumChannel):
+        print(
+            f"[Forum] Channel-ID {channel_id} (Config-Key '{config_key}') ist kein Forum-Channel "
+            f"(mehr) oder wurde nicht im Cache gefunden - Eintrag #{entry_id} bekommt keinen Forum-Beitrag."
+        )
         return
 
     applied_tags = await _resolve_forum_tags(channel, (tags or "").split(","))
@@ -374,8 +382,8 @@ async def _create_forum_post(
             name=name[:100], embeds=embeds, applied_tags=applied_tags, view=view
         )
         await db.set_forum_thread(entry_id, result.thread.id)
-    except discord.HTTPException:
-        pass
+    except discord.HTTPException as e:
+        print(f"[Forum] Erstellen des Forum-Beitrags für Eintrag #{entry_id} fehlgeschlagen: {e}")
 
 
 async def _get_forum_thread(guild: Optional[discord.Guild], thread_id: Optional[int]) -> Optional[discord.Thread]:
@@ -1054,7 +1062,7 @@ class FinishUploadView(ui.View):
 # --------------------------------------------------------------------------- #
 
 # Vorgeschlagene Tags zur Auswahl - eigene Tags können zusätzlich frei getippt werden.
-PRESET_TAGS: List[str] = ["Overworld", "Nether", "End", "Automatisch", "Semi-Automatisch", "Passiv-Automatisch", "AFK"]
+PRESET_TAGS: List[str] = ["Overworld", "Nether", "End", "Loch", "Automatisch", "Semi-Automatisch", "Passiv-Automatisch", "AFK"]
 
 
 class YoutubeLinkModal(ui.Modal, title="YouTube-Tutorial verlinken"):

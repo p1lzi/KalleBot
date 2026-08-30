@@ -1,18 +1,21 @@
 """
-Farm-Bestellungen: Nutzer können anfragen, dass jemand für sie etwas farmt.
-Eigenständiges System, unabhängig von den Struktur/Biom/Farm/Base-Einträgen.
+Farm-Bestellungen & Aufträge: Nutzer können anfragen, dass jemand für sie etwas
+farmt (Bestellung, z.B. "5 Stacks Eisen") oder etwas anderes erledigt (Auftrag,
+z.B. "einen Weg bauen"). Eigenständiges System, unabhängig von den
+Struktur/Biom/Farm/Base-Einträgen.
 
-Ablauf: Button "📦 Bestellung aufgeben" -> Modal (Item, Beschreibung) -> Dringlichkeit
-(Dropdown, wird als echter Forum-Tag angewendet) -> optional eine Person pingen ->
-optional ein YouTube-Video verlinken -> optional Bilder hochladen (was gebraucht wird)
--> Forum-Beitrag wird erstellt, bekommt automatisch den Tag "Offen" sowie die
-Dringlichkeits-Tag und zwei Buttons:
+Ablauf: Button "📋 Bestellung/Auftrag aufgeben" -> Auswahl Bestellung oder Auftrag
+-> Modal (Titel passt sich an: "Was soll gefarmt werden?" bzw. "Was soll gemacht
+werden?", plus Beschreibung) -> Dringlichkeit (Dropdown, wird als echter Forum-Tag
+angewendet) -> optional mehrere Personen pingen -> optional ein YouTube-Video
+verlinken -> optional Bilder hochladen -> Forum-Beitrag wird erstellt, bekommt
+automatisch den Tag "Offen" sowie die Dringlichkeits-Tag und zwei Buttons:
 
-- "🔧 In Bearbeitung": setzt den Status um, der Tag wechselt von "Offen" auf
-  "In Bearbeitung".
+- "🔧 In Bearbeitung": merkt sich, wer die Bestellung/den Auftrag übernommen hat
+  (wird im Beitrag angezeigt), der Tag wechselt von "Offen" auf "In Bearbeitung".
 - "✅ Fertig": fragt optional nach einem Bild, wo die Kiste mit den Items steht,
   setzt den Status auf "Erledigt" (Tag wechselt entsprechend) und pingt die Person,
-  die die Bestellung ursprünglich aufgegeben hat, im Forum-Beitrag.
+  die die Bestellung/den Auftrag ursprünglich aufgegeben hat, im Forum-Beitrag.
 """
 
 import asyncio
@@ -25,6 +28,26 @@ import database as db
 from logs import log_action
 from views import FinishUploadView, _get_image_channel, _resolve_forum_tags
 
+# Bestellung (Items farmen) vs. Auftrag (alles andere, z.B. "einen Weg bauen").
+ORDER_TYPE_INFO: Dict[str, Dict[str, str]] = {
+    "bestellung": {
+        "emoji": "📦",
+        "label": "Bestellung",
+        "button_label": "📦 Bestellung (Items farmen)",
+        "item_label": "Was soll gefarmt werden?",
+        "item_placeholder": "z.B. 5 Stacks Eisen, 2 Shulker Gold, 64 Netherit-Schrott ...",
+        "modal_title": "Farm-Bestellung aufgeben",
+    },
+    "auftrag": {
+        "emoji": "🛠️",
+        "label": "Auftrag",
+        "button_label": "🛠️ Auftrag (z.B. etwas bauen)",
+        "item_label": "Was soll gemacht werden?",
+        "item_placeholder": "z.B. einen Weg zur Farm bauen, eine Brücke, Redstone verkabeln ...",
+        "modal_title": "Auftrag aufgeben",
+    },
+}
+
 # Vorgeschlagene Dringlichkeits-Stufen (werden als echte Discord-Forum-Tags
 # angewendet, zusätzlich zum Status-Tag Offen/In Bearbeitung/Erledigt).
 URGENCY_LEVELS: List[Tuple[str, str]] = [
@@ -35,7 +58,7 @@ URGENCY_LEVELS: List[Tuple[str, str]] = [
 ]
 _URGENCY_EMOJI: Dict[str, str] = {name: emoji for name, emoji in URGENCY_LEVELS}
 
-# Status einer Bestellung -> Anzeige-Text/Emoji und Name des Forum-Tags.
+# Status -> Anzeige-Text/Emoji und Name des Forum-Tags.
 STATUS_INFO: Dict[str, Tuple[str, str]] = {
     "offen": ("🟩 Offen", "Offen"),
     "in_bearbeitung": ("🔧 In Bearbeitung", "In Bearbeitung"),
@@ -50,6 +73,24 @@ def _urgency_color(urgency: Optional[str]) -> discord.Color:
         "Hoch": discord.Color.orange(),
         "Dringend": discord.Color.red(),
     }.get(urgency or "", discord.Color.blurple())
+
+
+def _order_type_info(order: Dict[str, Any]) -> Dict[str, str]:
+    return ORDER_TYPE_INFO.get(order.get("order_type") or "bestellung", ORDER_TYPE_INFO["bestellung"])
+
+
+def _parse_ping_ids(order: Dict[str, Any]) -> List[int]:
+    raw = order.get("ping_user_ids")
+    if not raw:
+        return []
+    return [int(x) for x in raw.split(",") if x.strip().isdigit()]
+
+
+def _parse_ping_role_ids(order: Dict[str, Any]) -> List[int]:
+    raw = order.get("ping_role_ids")
+    if not raw:
+        return []
+    return [int(x) for x in raw.split(",") if x.strip().isdigit()]
 
 
 async def _get_orders_forum_channel(guild: Optional[discord.Guild]) -> Optional[discord.ForumChannel]:
@@ -77,8 +118,12 @@ async def _get_order_thread(guild: Optional[discord.Guild], thread_id: Optional[
 async def _build_order_embeds(order: Dict[str, Any], images: List[Dict[str, Any]]) -> List[discord.Embed]:
     color = _urgency_color(order.get("urgency"))
     status_label, _ = STATUS_INFO.get(order.get("status") or "offen", STATUS_INFO["offen"])
+    type_info = _order_type_info(order)
 
-    main = discord.Embed(title=f"📦 {order['item']}", color=color, timestamp=discord.utils.utcnow())
+    main = discord.Embed(
+        title=f"{type_info['emoji']} {order['item']}", color=color, timestamp=discord.utils.utcnow()
+    )
+    main.add_field(name="Art", value=type_info["label"], inline=True)
     if order.get("urgency"):
         emoji = _URGENCY_EMOJI.get(order["urgency"], "")
         main.add_field(name="Dringlichkeit", value=f"{emoji} {order['urgency']}", inline=True)
@@ -88,8 +133,16 @@ async def _build_order_embeds(order: Dict[str, Any], images: List[Dict[str, Any]
         main.add_field(name="Beschreibung", value=order["beschreibung"], inline=False)
     if order.get("youtube_link"):
         main.add_field(name="▶️ Video", value=order["youtube_link"], inline=False)
-    if order.get("ping_user_id"):
-        main.add_field(name="Für", value=f"<@{order['ping_user_id']}>", inline=False)
+
+    ping_ids = _parse_ping_ids(order)
+    role_ping_ids = _parse_ping_role_ids(order)
+    ping_mentions = [f"<@{uid}>" for uid in ping_ids] + [f"<@&{rid}>" for rid in role_ping_ids]
+    if ping_mentions:
+        main.add_field(name="Für", value=" ".join(ping_mentions), inline=False)
+
+    if order.get("claimed_by_name"):
+        main.add_field(name="🙋 Übernommen von", value=order["claimed_by_name"], inline=False)
+
     main.set_footer(text=f"Aufgegeben von {order.get('ersteller_name', 'Unbekannt')}")
 
     embeds = [main]
@@ -117,7 +170,7 @@ async def _build_order_embeds(order: Dict[str, Any], images: List[Dict[str, Any]
 
 
 async def _order_tags(order: Dict[str, Any]) -> List[str]:
-    tags = []
+    tags = [_order_type_info(order)["label"]]
     if order.get("urgency"):
         tags.append(order["urgency"])
     _, tag_name = STATUS_INFO.get(order.get("status") or "offen", STATUS_INFO["offen"])
@@ -154,8 +207,9 @@ async def _sync_order_forum_post(guild: Optional[discord.Guild], order_id: int) 
 
 
 async def _create_order_forum_post(guild: Optional[discord.Guild], order_id: int) -> None:
-    """Erstellt den Forum-Beitrag für eine neue Bestellung, inkl. Status-Tag "Offen"
-    und Dringlichkeits-Tag, sowie den Buttons "🔧 In Bearbeitung" und "✅ Fertig"."""
+    """Erstellt den Forum-Beitrag für eine neue Bestellung/einen neuen Auftrag,
+    inkl. Status-Tag "Offen" und Dringlichkeits-Tag, sowie den Buttons
+    "🔧 In Bearbeitung" und "✅ Fertig"."""
     if guild is None:
         return
     order = await db.get_order(order_id)
@@ -164,6 +218,11 @@ async def _create_order_forum_post(guild: Optional[discord.Guild], order_id: int
 
     channel = await _get_orders_forum_channel(guild)
     if channel is None:
+        print(
+            f"[Bestellungen-Forum] Kein Forum-Channel konfiguriert (Config-Key "
+            f"'bestellungen_forum_channel_id' ist leer oder Channel nicht gefunden) - "
+            f"Bestellung #{order_id} bekommt keinen Forum-Beitrag."
+        )
         return
 
     images = await db.get_order_images(order_id)
@@ -175,15 +234,18 @@ async def _create_order_forum_post(guild: Optional[discord.Guild], order_id: int
     view.add_item(OrderProgressButton(order_id))
     view.add_item(OrderDoneButton(order_id))
 
-    content = f"<@{order['ping_user_id']}>" if order.get("ping_user_id") else None
+    ping_ids = _parse_ping_ids(order)
+    role_ping_ids = _parse_ping_role_ids(order)
+    mentions = [f"<@{uid}>" for uid in ping_ids] + [f"<@&{rid}>" for rid in role_ping_ids]
+    content = " ".join(mentions) if mentions else None
 
     try:
         result = await channel.create_thread(
             name=order["item"][:100], content=content, embeds=embeds, applied_tags=applied_tags, view=view
         )
         await db.set_order_forum_thread(order_id, result.thread.id)
-    except discord.HTTPException:
-        pass
+    except discord.HTTPException as e:
+        print(f"[Bestellungen-Forum] Erstellen des Forum-Beitrags für Bestellung #{order_id} fehlgeschlagen: {e}")
 
 
 async def _collect_order_images(
@@ -276,35 +338,64 @@ async def _collect_order_images(
 
 
 # --------------------------------------------------------------------------- #
-# Bestellung aufgeben: Modal -> Dringlichkeit -> Ping -> YouTube -> Bilder
+# Schritt 0: Bestellung oder Auftrag?
 # --------------------------------------------------------------------------- #
 
-class OrderModal(ui.Modal, title="Farm-Bestellung aufgeben"):
-    item = ui.TextInput(
-        label="Was soll gefarmt werden?",
-        placeholder="z.B. 5 Stacks Eisen, 2 Shulker Gold, 64 Netherit-Schrott ...",
-        max_length=100,
-    )
-    beschreibung = ui.TextInput(
-        label="Beschreibung (optional)",
-        style=discord.TextStyle.paragraph,
-        required=False,
-        max_length=500,
-    )
+class OrderTypeButton(ui.Button):
+    def __init__(self, order_type: str) -> None:
+        info = ORDER_TYPE_INFO[order_type]
+        super().__init__(label=info["button_label"], style=discord.ButtonStyle.primary)
+        self.order_type = order_type
+
+    async def callback(self, interaction: discord.Interaction) -> None:
+        await interaction.response.send_modal(OrderModal(self.order_type))
+
+
+class OrderTypeView(ui.View):
+    def __init__(self) -> None:
+        super().__init__(timeout=180)
+        self.add_item(OrderTypeButton("bestellung"))
+        self.add_item(OrderTypeButton("auftrag"))
+
+
+# --------------------------------------------------------------------------- #
+# Bestellung/Auftrag aufgeben: Modal -> Dringlichkeit -> Ping -> YouTube -> Bilder
+# --------------------------------------------------------------------------- #
+
+class OrderModal(ui.Modal):
+    def __init__(self, order_type: str) -> None:
+        self.order_type = order_type
+        info = ORDER_TYPE_INFO[order_type]
+        super().__init__(title=info["modal_title"])
+
+        self.item = ui.TextInput(
+            label=info["item_label"], placeholder=info["item_placeholder"], max_length=100
+        )
+        self.beschreibung = ui.TextInput(
+            label="Beschreibung (optional)",
+            style=discord.TextStyle.paragraph,
+            required=False,
+            max_length=500,
+        )
+        self.add_item(self.item)
+        self.add_item(self.beschreibung)
 
     async def on_submit(self, interaction: discord.Interaction) -> None:
+        info = ORDER_TYPE_INFO[self.order_type]
         order_id = await db.add_order(
             item=self.item.value.strip(),
             beschreibung=self.beschreibung.value.strip() if self.beschreibung.value else None,
             ersteller_id=interaction.user.id,
             ersteller_name=str(interaction.user),
+            order_type=self.order_type,
         )
 
         embed = discord.Embed(
-            title=f"📦 {self.item.value.strip()}",
+            title=f"{info['emoji']} {self.item.value.strip()}",
             color=discord.Color.blurple(),
             timestamp=discord.utils.utcnow(),
         )
+        embed.add_field(name="Art", value=info["label"], inline=True)
         embed.add_field(name="ID", value=f"`{order_id}`", inline=True)
         if self.beschreibung.value:
             embed.add_field(name="Beschreibung", value=self.beschreibung.value, inline=False)
@@ -313,12 +404,14 @@ class OrderModal(ui.Modal, title="Farm-Bestellung aufgeben"):
             icon_url=interaction.user.display_avatar.url,
         )
 
-        await interaction.response.send_message(content="✅ Bestellung erstellt!", embed=embed, ephemeral=True)
+        await interaction.response.send_message(
+            content=f"✅ {info['label']} erstellt!", embed=embed, ephemeral=True
+        )
 
         await log_action(
             interaction.guild,
             discord.Embed(
-                title="📦 Neue Farm-Bestellung",
+                title=f"{info['emoji']} Neue {info['label']}",
                 description=f"**{self.item.value.strip()}** · ID `{order_id}`\nVon: {interaction.user.mention}",
                 color=discord.Color.blurple(),
                 timestamp=discord.utils.utcnow(),
@@ -347,7 +440,7 @@ class UrgencySelect(ui.Select):
 
 class UrgencyNextButton(ui.Button):
     def __init__(self) -> None:
-        super().__init__(label="➡️ Weiter (Person pingen)", style=discord.ButtonStyle.success, row=1)
+        super().__init__(label="➡️ Weiter (Personen pingen)", style=discord.ButtonStyle.success, row=1)
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view: "UrgencyView" = self.view  # type: ignore[assignment]
@@ -369,19 +462,24 @@ class UrgencyView(ui.View):
 
     def render_content(self) -> str:
         current = self.urgency or "_noch nicht gewählt_"
-        return f"🚦 Wie dringend ist die Bestellung?\n**Aktuell:** {current}"
+        return f"🚦 Wie dringend ist es?\n**Aktuell:** {current}"
 
 
-class PingUserSelect(ui.UserSelect):
+class PingUserSelect(ui.MentionableSelect):
     def __init__(self) -> None:
         super().__init__(
-            placeholder="Optional: bestimmte Person pingen", min_values=0, max_values=1, row=0
+            placeholder="Optional: bis zu 10 Personen und/oder Rollen pingen",
+            min_values=0,
+            max_values=10,
+            row=0,
         )
 
     async def callback(self, interaction: discord.Interaction) -> None:
         view: "PingUserView" = self.view  # type: ignore[assignment]
-        view.ping_user = self.values[0] if self.values else None
-        await db.set_order_ping_user(view.order_id, view.ping_user.id if view.ping_user else None)
+        view.ping_users = [v for v in self.values if isinstance(v, (discord.Member, discord.User))]
+        view.ping_roles = [v for v in self.values if isinstance(v, discord.Role)]
+        await db.set_order_ping_users(view.order_id, [u.id for u in view.ping_users])
+        await db.set_order_ping_roles(view.order_id, [r.id for r in view.ping_roles])
         view.rebuild_buttons()
         await interaction.response.edit_message(content=view.render_content(), view=view)
 
@@ -399,7 +497,8 @@ class PingUserView(ui.View):
     def __init__(self, order_id: int) -> None:
         super().__init__(timeout=300)
         self.order_id = order_id
-        self.ping_user: Optional[discord.User] = None
+        self.ping_users: List[discord.abc.User] = []
+        self.ping_roles: List[discord.Role] = []
         self.rebuild_buttons()
 
     def rebuild_buttons(self) -> None:
@@ -408,8 +507,9 @@ class PingUserView(ui.View):
         self.add_item(PingUserNextButton())
 
     def render_content(self) -> str:
-        current = self.ping_user.mention if self.ping_user else "_niemand_"
-        return f"📣 Möchtest du jemanden für diese Bestellung pingen?\n**Aktuell:** {current}"
+        mentions = [u.mention for u in self.ping_users] + [r.mention for r in self.ping_roles]
+        current = ", ".join(mentions) if mentions else "_niemand_"
+        return f"📣 Möchtest du Personen und/oder Rollen dafür pingen?\n**Aktuell:** {current}"
 
 
 class OrderYoutubeModal(ui.Modal, title="YouTube-Video verlinken"):
@@ -442,10 +542,9 @@ class OrderYoutubeModal(ui.Modal, title="YouTube-Video verlinken"):
 
         finish_view = FinishUploadView(interaction.user.id)
         prompt_message = await interaction.followup.send(
-            "📸 Du kannst jetzt bis zu 3 Minuten lang Bild(er) zu deiner Bestellung senden "
-            "(z.B. ein Bild des gewünschten Items). Deine Nachrichten werden danach "
-            "automatisch gelöscht. Klicke auf **✅ Fertig**, wenn du keine weiteren Bilder "
-            "hochladen möchtest.",
+            "📸 Du kannst jetzt bis zu 3 Minuten lang Bild(er) senden (z.B. ein Bild des "
+            "gewünschten Items). Deine Nachrichten werden danach automatisch gelöscht. "
+            "Klicke auf **✅ Fertig**, wenn du keine weiteren Bilder hochladen möchtest.",
             view=finish_view,
             ephemeral=True,
         )
@@ -487,18 +586,25 @@ class OrderProgressButton(
     async def callback(self, interaction: discord.Interaction) -> None:
         order = await db.get_order(self.order_id)
         if not order:
-            await interaction.response.send_message("❌ Diese Bestellung existiert nicht mehr.", ephemeral=True)
+            await interaction.response.send_message("❌ Das existiert nicht mehr.", ephemeral=True)
             return
         if order.get("status") == "erledigt":
-            await interaction.response.send_message(
-                "ℹ️ Diese Bestellung ist bereits als erledigt markiert.", ephemeral=True
-            )
+            await interaction.response.send_message("ℹ️ Das ist bereits als erledigt markiert.", ephemeral=True)
             return
 
+        already_claimed_by = order.get("claimed_by_name")
+
         await db.set_order_status(self.order_id, "in_bearbeitung")
+        await db.set_order_claimed(self.order_id, interaction.user.id, str(interaction.user))
+
+        note = (
+            f"\nℹ️ War zuvor bereits von **{already_claimed_by}** übernommen - jetzt auf dich aktualisiert."
+            if already_claimed_by and already_claimed_by != str(interaction.user)
+            else ""
+        )
         await interaction.response.send_message(
-            f"🔧 **{order['item']}** ist jetzt als \"In Bearbeitung\" markiert - danke, dass du dich "
-            "kümmerst!",
+            f"🔧 **{order['item']}** ist jetzt als \"In Bearbeitung\" markiert und dir zugeordnet - "
+            f"danke, dass du dich kümmerst!{note}",
             ephemeral=True,
         )
         await _sync_order_forum_post(interaction.guild, self.order_id)
@@ -526,13 +632,16 @@ class OrderDoneButton(
     async def callback(self, interaction: discord.Interaction) -> None:
         order = await db.get_order(self.order_id)
         if not order:
-            await interaction.response.send_message("❌ Diese Bestellung existiert nicht mehr.", ephemeral=True)
+            await interaction.response.send_message("❌ Das existiert nicht mehr.", ephemeral=True)
             return
         if order.get("status") == "erledigt":
-            await interaction.response.send_message(
-                "ℹ️ Diese Bestellung ist bereits als erledigt markiert.", ephemeral=True
-            )
+            await interaction.response.send_message("ℹ️ Das ist bereits als erledigt markiert.", ephemeral=True)
             return
+
+        # Wer auf "Fertig" klickt, hat es faktisch übernommen/erledigt - falls noch
+        # niemand als "übernommen" markiert war, jetzt eintragen.
+        if not order.get("claimed_by_id"):
+            await db.set_order_claimed(self.order_id, interaction.user.id, str(interaction.user))
 
         finish_view = FinishUploadView(interaction.user.id)
         await interaction.response.send_message(
@@ -550,36 +659,41 @@ class OrderDoneButton(
         await db.set_order_status(self.order_id, "erledigt")
         await _sync_order_forum_post(interaction.guild, self.order_id)
 
-        # Ersteller der Bestellung im Forum-Beitrag pingen, damit er/sie merkt,
-        # dass alles fertig gefarmt wurde.
+        # Ersteller im Forum-Beitrag pingen, damit er/sie merkt, dass alles fertig ist.
         thread = await _get_order_thread(interaction.guild, order.get("forum_thread_id"))
         if thread is not None:
             try:
                 await thread.send(
-                    f"<@{order['ersteller_id']}> ✅ Deine Bestellung **{order['item']}** wurde von "
-                    f"{interaction.user.mention} fertig gefarmt!"
+                    f"<@{order['ersteller_id']}> ✅ Deine Bestellung/dein Auftrag **{order['item']}** "
+                    f"wurde von {interaction.user.mention} erledigt!"
                 )
             except discord.HTTPException:
                 pass
 
         await interaction.followup.send(
-            "✅ Danke! Die Bestellung ist jetzt als erledigt markiert und der/die Erstellende wurde "
-            "im Forum-Beitrag gepingt.",
+            "✅ Danke! Als erledigt markiert und der/die Erstellende wurde im Forum-Beitrag gepingt.",
             ephemeral=True,
         )
 
 
 # --------------------------------------------------------------------------- #
-# Persistenter "Bestellung aufgeben"-Button für den Bestellungen-Channel
+# Persistenter "Bestellung/Auftrag aufgeben"-Button für den Bestellungen-Channel
 # --------------------------------------------------------------------------- #
 
 class BestellungView(ui.View):
-    """Persistente View mit dem 'Bestellung aufgeben'-Button (funktioniert auch
-    nach Bot-Neustart)."""
+    """Persistente View mit dem 'Bestellung/Auftrag aufgeben'-Button (funktioniert
+    auch nach Bot-Neustart)."""
 
     def __init__(self) -> None:
         super().__init__(timeout=None)
 
-    @ui.button(label="📦 Bestellung aufgeben", style=discord.ButtonStyle.green, custom_id="bestellung_button")
+    @ui.button(
+        label="📋 Bestellung/Auftrag aufgeben", style=discord.ButtonStyle.green, custom_id="bestellung_button"
+    )
     async def bestellung_button(self, interaction: discord.Interaction, button: ui.Button) -> None:
-        await interaction.response.send_modal(OrderModal())
+        await interaction.response.send_message(
+            "Möchtest du eine **Bestellung** (Items farmen) oder einen **Auftrag** "
+            "(z.B. etwas bauen) aufgeben?",
+            view=OrderTypeView(),
+            ephemeral=True,
+        )
