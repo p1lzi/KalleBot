@@ -398,4 +398,4 @@ import discord
 
 **Version**: 1.0 (Sept 2024)
 **Zuletzt aktualisiert**: Skill-Dokumentation
-
+**Ort**: `.github/ai-skills/`
